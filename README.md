@@ -2,6 +2,10 @@
 
 A reusable architecture to avoid repeating CRUD logic across Supabase-backed features.
 
+## Architecture
+
+![Supabase Backend Orchestrator — factories, config, and feature combos](./public/diagram.png)
+
 ---
 
 ## Why this exists
