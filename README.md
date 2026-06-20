@@ -287,17 +287,6 @@ See `entities/testimonials/` as the canonical reference.
 
 ---
 
-## When to skip the entity pattern
-
-Use `infrastructure/` (no entity factory) when:
-
-- External API clients (Umami)
-- Auth checks (`infrastructure/admin`)
-- Orchestration over other libs (`infrastructure/analytics`)
-- Request/cookie utilities (`infrastructure/analytics/manual`)
-
----
-
 ## Rules
 
 1. Don't duplicate CRUD — use `createEntityService` from `@/services/core/entity`
