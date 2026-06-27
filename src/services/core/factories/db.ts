@@ -1,8 +1,6 @@
-import { response } from "@/utils/response";
-import { resolveClient } from "@/lib/supabase";
+import { response } from "@/services/core/response";
 import type {
   BaseDbInstance,
-  BaseParams,
   DbCreateParams,
   DbGetByIdParams,
   DbGetParams,
@@ -15,18 +13,15 @@ import type {
 export function createDbService({
   tableName,
   primaryKey = "id",
+  supabaseClient,
 }: DbServiceConfig): BaseDbInstance {
   /**
    * CREATE
    */
-  const create = async <T extends object>({
-    payload,
-    clientType = "server",
-  }: DbCreateParams<T>) => {
-    const db = await resolveClient(clientType);
+  const create = async <T extends object>({ payload }: DbCreateParams<T>) => {
     const targetPayload = { ...payload } as PayloadRecord;
 
-    const { data, error } = await db
+    const { data, error } = await supabaseClient
       .from(tableName)
       .insert(targetPayload)
       .select()
@@ -46,12 +41,10 @@ export function createDbService({
   const update = async <T extends object>({
     id,
     payload,
-    clientType = "server",
   }: DbUpdateParams<T>) => {
-    const db = await resolveClient(clientType);
     const targetPayload = { ...payload } as PayloadRecord;
 
-    const { data, error } = await db
+    const { data, error } = await supabaseClient
       .from(tableName)
       .update(targetPayload)
       .eq(primaryKey, id)
@@ -71,11 +64,8 @@ export function createDbService({
    */
   const remove = async <T extends object = PayloadRecord>({
     id,
-    clientType = "server",
   }: DbRemoveParams) => {
-    const db = await resolveClient(clientType);
-
-    const { data, error } = await db
+    const { data, error } = await supabaseClient
       .from(tableName)
       .delete()
       .eq(primaryKey, id)
@@ -93,11 +83,8 @@ export function createDbService({
   /**
    * GET ALL
    */
-  const getAll = async <T extends object>({
-    clientType = "public",
-  }: BaseParams) => {
-    const db = await resolveClient(clientType);
-    const { data, error } = await db.from(tableName).select("*");
+  const getAll = async <T extends object>() => {
+    const { data, error } = await supabaseClient.from(tableName).select("*");
     const success = !error;
 
     return response(
@@ -111,16 +98,13 @@ export function createDbService({
   /**
    * GET BY ID
    */
-  const getById = async <T extends object>({
-    id,
-    clientType = "public",
-  }: DbGetByIdParams) => {
-    const db = await resolveClient(clientType);
-    const { data, error } = await db
+  const getById = async <T extends object>({ id }: DbGetByIdParams) => {
+    const { data, error } = await supabaseClient
       .from(tableName)
       .select("*")
       .eq(primaryKey, id)
       .single();
+
     return response(
       data as T,
       !error,
@@ -133,16 +117,9 @@ export function createDbService({
    * GET WITH QUERY
    */
   const get = async <T extends object>(params: DbGetParams<T>) => {
-    const {
-      where,
-      limit,
-      orderBy,
-      clientType = "public",
-      shape = "list",
-    } = params;
+    const { where, limit, orderBy, shape = "list" } = params;
 
-    const db = await resolveClient(clientType);
-    let query = db.from(tableName).select("*");
+    let query = supabaseClient.from(tableName).select("*");
     if (where) {
       for (const [key, value] of Object.entries(where))
         query = query.eq(key, value);

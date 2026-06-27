@@ -1,6 +1,6 @@
 "use client";
 
-import { ZodForm } from "@omar-ra7al/zod-form";
+import { ZodForm } from "zod-form-engine";
 import { ProjectSchemaTypes, projectSchema } from "@/schemas/projectSchema";
 import { createProject } from "@/services/entities/projects/actions";
 

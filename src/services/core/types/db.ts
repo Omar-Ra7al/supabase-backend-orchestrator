@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@/utils/response";
+import type { ApiResponse } from "@/services/core/response";
 
 import type {
   BaseParams,
@@ -7,10 +7,12 @@ import type {
   WithId,
   WithPayload,
 } from "./shared";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export type DbServiceConfig = {
   tableName: string;
   primaryKey?: string;
+  supabaseClient: SupabaseClient;
 };
 
 export type DbCreateParams<T> = WithPayload<T>;

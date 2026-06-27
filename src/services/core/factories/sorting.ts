@@ -1,4 +1,4 @@
-import { response } from "@/utils/response";
+import { response } from "@/services/core/response";
 import type {
   BaseSortingInstance,
   SortingServiceConfig,
@@ -11,25 +11,18 @@ export function createSortingService({
   /**
    * CREATE
    */
-  const createSort: BaseSortingInstance["createSort"] = async ({
-    payload,
-    clientType = "server",
-  }) => {
+  const createSort: BaseSortingInstance["createSort"] = async ({ payload }) => {
     return dbService.create({
       payload: { column_id: sortRowId, ...payload },
-      clientType,
     });
   };
 
   /**
    * GET SORT
    */
-  const getSort: BaseSortingInstance["getSort"] = async ({
-    clientType = "public",
-  }) => {
+  const getSort: BaseSortingInstance["getSort"] = async () => {
     return dbService.get({
       where: { column_id: sortRowId },
-      clientType,
       shape: "single",
     });
   };
@@ -37,14 +30,10 @@ export function createSortingService({
   /**
    * SAVE SORT
    */
-  const saveSort: BaseSortingInstance["saveSort"] = async ({
-    ids,
-    clientType = "server",
-  }) => {
+  const saveSort: BaseSortingInstance["saveSort"] = async ({ ids }) => {
     return dbService.update({
       id: sortRowId,
       payload: { ids },
-      clientType,
     });
   };
 
@@ -52,10 +41,9 @@ export function createSortingService({
    * REMOVE SORT
    */
   const removeItemFromOrder: BaseSortingInstance["removeItemFromOrder"] =
-    async ({ id, clientType = "server" }) => {
+    async ({ id }) => {
       const { data, error } = await dbService.get({
         where: { column_id: sortRowId },
-        clientType,
         shape: "single",
       });
       if (error) return response(null, false, error, "Failed to fetch sorting");
@@ -66,7 +54,6 @@ export function createSortingService({
       return dbService.update({
         id: sortRowId,
         payload: { ids: updatedOrder },
-        clientType,
       });
     };
 

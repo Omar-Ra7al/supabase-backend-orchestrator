@@ -2,9 +2,7 @@ import type { DbClientType } from "@/lib/supabase";
 
 export type { DbClientType };
 
-export type BaseParams = {
-  clientType?: DbClientType;
-};
+export type BaseParams = object;
 
 export type BaseId = number | string;
 
