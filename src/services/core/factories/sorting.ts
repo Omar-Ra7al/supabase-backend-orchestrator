@@ -12,29 +12,50 @@ export function createSortingService({
    * CREATE
    */
   const createSort: BaseSortingInstance["createSort"] = async ({ payload }) => {
-    return dbService.create({
+    const result = await dbService.create({
       payload: { column_id: sortRowId, ...payload },
     });
+
+    return response(
+      result.data,
+      result.success,
+      result.error,
+      result.success ? "Sort created successfully" : "Sort creation failed",
+    );
   };
 
   /**
    * GET SORT
    */
   const getSort: BaseSortingInstance["getSort"] = async () => {
-    return dbService.get({
+    const result = await dbService.get({
       where: { column_id: sortRowId },
       shape: "single",
     });
+
+    return response(
+      result.data,
+      result.success,
+      result.error,
+      result.success ? "Sort fetched successfully" : "Sort fetch failed",
+    );
   };
 
   /**
    * SAVE SORT
    */
   const saveSort: BaseSortingInstance["saveSort"] = async ({ ids }) => {
-    return dbService.update({
+    const result = await dbService.update({
       id: sortRowId,
       payload: { ids },
     });
+
+    return response(
+      result.data,
+      result.success,
+      result.error,
+      result.success ? "Sort saved successfully" : "Sort save failed",
+    );
   };
 
   /**
@@ -42,19 +63,35 @@ export function createSortingService({
    */
   const removeItemFromOrder: BaseSortingInstance["removeItemFromOrder"] =
     async ({ id }) => {
-      const { data, error } = await dbService.get({
+      const sortResponse = await dbService.get({
         where: { column_id: sortRowId },
         shape: "single",
       });
-      if (error) return response(null, false, error, "Failed to fetch sorting");
+      if (!sortResponse.success) {
+        return response(
+          null,
+          false,
+          sortResponse.error,
+          "Failed to fetch sorting",
+        );
+      }
 
-      const sortRow = data as { ids?: unknown[] } | null;
+      const sortRow = sortResponse.data as { ids?: unknown[] } | null;
       const updatedOrder = sortRow?.ids?.filter((item) => item !== id);
 
-      return dbService.update({
+      const result = await dbService.update({
         id: sortRowId,
         payload: { ids: updatedOrder },
       });
+
+      return response(
+        result.data,
+        result.success,
+        result.error,
+        result.success
+          ? "Item removed from order successfully"
+          : "Failed to remove item from order",
+      );
     };
 
   /**
@@ -65,10 +102,12 @@ export function createSortingService({
     order,
   }) => {
     const sortOrder = order ?? [];
-    return [...(items ?? [])].sort(
+    const sorted = [...(items ?? [])].sort(
       (itemA, itemB) =>
         sortOrder.indexOf(itemA.id) - sortOrder.indexOf(itemB.id),
     );
+
+    return response(sorted, true, null, "Items sorted successfully");
   };
 
   return {
@@ -77,5 +116,5 @@ export function createSortingService({
     saveSort,
     removeItemFromOrder,
     sortByOrder,
-  };
+  } satisfies BaseSortingInstance;
 }

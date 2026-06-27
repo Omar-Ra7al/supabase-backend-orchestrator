@@ -175,7 +175,10 @@ Entity and db methods are generic — pass your schema type so `data` is typed a
 | `getAllSorted`             | required at call site                  | `T[]`       |
 
 ```ts
-import type { TestimonialRecord, TestimonialSchemaTypes } from "@/schemas/testimonialSchema";
+import type {
+  TestimonialRecord,
+  TestimonialSchemaTypes,
+} from "@/schemas/testimonialSchema";
 import type { SeoPageRecord } from "@/schemas/seoSchema";
 
 // Schema types — form payloads (create/update)
@@ -194,9 +197,10 @@ const { data: page } = await seoService.get<SeoPageRecord>({
   where: { route: "/contact" },
   shape: "single",
 });
-const { data: approved } = await testimonialService.getAllSorted<TestimonialRecord>({
-  where: { status: "approved" },
-});
+const { data: approved } =
+  await testimonialService.getAllSorted<TestimonialRecord>({
+    where: { status: "approved" },
+  });
 ```
 
 Inner factory responses use `success` (not `!error`) before cache invalidation and before returning to actions.

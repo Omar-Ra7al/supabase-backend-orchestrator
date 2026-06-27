@@ -30,5 +30,5 @@ export interface BaseSortingInstance {
   ) => Promise<ApiResponse<unknown>>;
   sortByOrder: <T extends { id: number }>(
     params: SortByOrderParams<T>,
-  ) => Promise<T[]>;
+  ) => Promise<ApiResponse<T[]>>;
 }

@@ -265,13 +265,22 @@ export function createEntityService({
       const rawItems = itemsResponse.data as unknown as { id: number }[];
 
       // 3. Delegate safely to the smart sorting engine helper
-      const sortedData = await sortingService.sortByOrder<{ id: number }>({
+      const sortResult = await sortingService.sortByOrder<{ id: number }>({
         items: rawItems,
         order: sortOrder,
       });
 
+      if (!sortResult.success) {
+        return response<T[]>(
+          [],
+          false,
+          sortResult.error,
+          sortResult.message,
+        );
+      }
+
       return response<T[]>(
-        sortedData as T[],
+        sortResult.data as T[],
         true,
         null,
         "Sorted elements array fetched successfully",
