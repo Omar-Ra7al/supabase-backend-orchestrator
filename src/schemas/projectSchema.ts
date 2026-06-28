@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { imageSchema } from "./defualtSchemas";
 import { Textarea } from "@/components/ui/textarea";
-import { field } from "@omar-ra7al/zod-form";
+import { field } from "zod-form-engine";
 
 const maxFiles = 1;
 
