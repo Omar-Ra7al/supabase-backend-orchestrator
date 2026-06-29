@@ -19,10 +19,13 @@ export type EntitySortingConfig = Omit<SortingServiceConfig, "dbService"> & {
 };
 
 export type EntityServiceConfig = {
-  dbServiceConfig: DbServiceConfig & { cacheTag?: string };
+  dbServiceConfig: Omit<DbServiceConfig, "supabaseClient"> & {
+    cacheTag?: string;
+  };
+  storageServiceConfig?: Omit<StorageServiceConfig, "supabaseClient"> & {
+    payloadKey?: WithPayloadKey;
+  };
   sortingServiceConfig?: EntitySortingConfig;
-  storageServiceConfig?: StorageServiceConfig & { payloadKey?: WithPayloadKey };
-  revalidateFn?: (tag: string) => void;
 };
 
 export type EntityCreateParams<T> = WithPayload<T>;

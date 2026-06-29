@@ -1,20 +1,25 @@
-"use server";
-
-import { createEntityService } from "@/services/core/entity";
 import { createServerClient } from "@/lib/supabase/server";
+import { createEntityService } from "@/services/core/entity";
+import { EntityServiceConfig } from "@/services/core/types";
 import { revalidateTag } from "next/cache";
 
-export const testService = createEntityService({
+export const testServiceConfig: EntityServiceConfig = {
   dbServiceConfig: {
     tableName: "test",
     cacheTag: "test",
     primaryKey: "id",
-    supabaseClient: await createServerClient(),
   },
   storageServiceConfig: {
     bucketName: "test",
     groupFolder: "test",
-    supabaseClient: await createServerClient(),
   },
-  revalidateFn: revalidateTag as (tag: string) => void,
-});
+};
+
+export const getTestService = async () => {
+  const client = await createServerClient();
+  return createEntityService({
+    supabaseClient: client,
+    revalidateFn: revalidateTag as (tag: string) => void,
+    ...testServiceConfig,
+  });
+};

@@ -10,7 +10,7 @@ import { generateProjectService } from "./core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProjectSchemaTypes } from "@/schemas/projectSchema";
 
-const getProjectServerService = async (customClient?: SupabaseClient) => {
+const getProjectService = async (customClient?: SupabaseClient) => {
   const client = customClient ?? (await createServerClient());
   const service = generateProjectService(
     client,
@@ -24,7 +24,7 @@ export const createProject = async ({
 }: {
   payload: ProjectSchemaTypes;
 }) => {
-  const projectService = await getProjectServerService();
+  const projectService = await getProjectService();
   return await projectService.create({ payload });
 };
 
@@ -33,7 +33,7 @@ export const createProjectAsAdmin = async ({
 }: {
   payload: ProjectSchemaTypes;
 }) => {
-  const projectService = await getProjectServerService(createAdminClient());
+  const projectService = await getProjectService(createAdminClient());
   return await projectService.create({ payload });
 };
 
@@ -42,8 +42,6 @@ export const createProjectAsPublic = async ({
 }: {
   payload: ProjectSchemaTypes;
 }) => {
-  const projectService = await getProjectServerService(
-    createPublicServerClient(),
-  );
+  const projectService = await getProjectService(createPublicServerClient());
   return await projectService.create({ payload });
 };

@@ -16,17 +16,27 @@ import type {
 import { createStorageService, hasBinaryAssets } from "./factories/storage";
 import { createSortingService } from "./factories/sorting";
 import { createDbService } from "./factories/db";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export function createEntityService({
   dbServiceConfig,
   sortingServiceConfig,
   storageServiceConfig,
   revalidateFn,
-}: EntityServiceConfig): BaseEntityInstance {
-  const dbService = createDbService(dbServiceConfig);
+  supabaseClient,
+}: EntityServiceConfig & { supabaseClient: SupabaseClient } & {
+  revalidateFn?: (tag: string) => void;
+}): BaseEntityInstance {
+  const dbService = createDbService({
+    ...dbServiceConfig,
+    supabaseClient,
+  });
 
   const storageService = storageServiceConfig
-    ? createStorageService(storageServiceConfig)
+    ? createStorageService({
+        ...storageServiceConfig,
+        supabaseClient,
+      })
     : undefined;
 
   const sortingService = sortingServiceConfig
@@ -34,7 +44,7 @@ export function createEntityService({
         dbService: createDbService({
           tableName: sortingServiceConfig.tableName,
           primaryKey: sortingServiceConfig.primaryKey,
-          supabaseClient: dbServiceConfig.supabaseClient,
+          supabaseClient,
         }),
         sortRowId: sortingServiceConfig.sortRowId,
       })
