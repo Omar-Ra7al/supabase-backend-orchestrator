@@ -22,6 +22,7 @@ export type EntityServiceConfig = {
   dbServiceConfig: DbServiceConfig & { cacheTag?: string };
   sortingServiceConfig?: EntitySortingConfig;
   storageServiceConfig?: StorageServiceConfig & { payloadKey?: WithPayloadKey };
+  revalidateFn?: (tag: string) => void;
 };
 
 export type EntityCreateParams<T> = WithPayload<T>;

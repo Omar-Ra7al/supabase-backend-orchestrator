@@ -2,22 +2,14 @@
 
 import { ZodForm } from "zod-form-engine";
 import { ProjectSchemaTypes, projectSchema } from "@/schemas/projectSchema";
-import { createProject } from "@/services/entities/projects/actions";
+import { useProjectService } from "@/services/entities/projects/client";
 
 const Form = () => {
-  const handleSubmit = async (data: ProjectSchemaTypes) => {
-    console.log(data);
-    const {
-      data: projectData,
-      success,
-      error,
-    } = await createProject({ payload: data });
+  const projectService = useProjectService();
 
-    if (success) {
-      console.log(projectData);
-    } else {
-      console.log(error);
-    }
+  const handleSubmit = async (data: ProjectSchemaTypes) => {
+    const project = await projectService.createProject(data);
+    console.log(project);
   };
 
   return (

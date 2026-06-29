@@ -1,4 +1,3 @@
-import { updateTag } from "next/cache";
 import { ApiResponse, response } from "@/services/core/response";
 
 import type {
@@ -22,6 +21,7 @@ export function createEntityService({
   dbServiceConfig,
   sortingServiceConfig,
   storageServiceConfig,
+  revalidateFn,
 }: EntityServiceConfig): BaseEntityInstance {
   const dbService = createDbService(dbServiceConfig);
 
@@ -41,7 +41,9 @@ export function createEntityService({
     : undefined;
 
   const invalidateCache = () => {
-    if (dbServiceConfig.cacheTag) updateTag(dbServiceConfig.cacheTag);
+    if (dbServiceConfig.cacheTag && revalidateFn) {
+      revalidateFn(dbServiceConfig.cacheTag);
+    }
   };
 
   const validateStorageRequirement = (payload: PayloadRecord) => {
@@ -271,12 +273,7 @@ export function createEntityService({
       });
 
       if (!sortResult.success) {
-        return response<T[]>(
-          [],
-          false,
-          sortResult.error,
-          sortResult.message,
-        );
+        return response<T[]>([], false, sortResult.error, sortResult.message);
       }
 
       return response<T[]>(
