@@ -1,12 +1,28 @@
 {
-  "name": "supabase-backend-orchestrator",
+  "name": "create-supabase-orchestrator",
   "version": "0.1.0",
-  "private": true,
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Omar-Ra7al/supabase-backend-orchestrator"
+  },
+  "bin": {
+    "create-supabase-orchestrator": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "src/services",
+    "src/lib/supabase"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "entity:generate": "node scripts/generate-entity.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

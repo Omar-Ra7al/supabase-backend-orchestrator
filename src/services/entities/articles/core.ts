@@ -3,23 +3,27 @@ import { createEntityService } from "@/services/core/entity";
 import { EntityServiceConfig } from "@/services/core/types";
 import { revalidateTag } from "next/cache";
 
-export const testServiceConfig: EntityServiceConfig = {
+/**
+ * Single-client example: a server-only entity. Every action goes through
+ * the authenticated server client (`createServerClient`) created per request.
+ */
+export const articleServiceConfig: EntityServiceConfig = {
   dbServiceConfig: {
-    tableName: "test",
-    cacheTag: "test",
+    tableName: "articles",
+    cacheTag: "articles",
     primaryKey: "id",
   },
   storageServiceConfig: {
-    bucketName: "test",
-    groupFolder: "test",
+    bucketName: "articles",
+    groupFolder: "articles",
   },
 };
 
-export const getTestService = async () => {
+export const getArticleService = async () => {
   const client = await createServerClient();
   return createEntityService({
     supabaseClient: client,
     revalidateFn: revalidateTag as (tag: string) => void,
-    ...testServiceConfig,
+    ...articleServiceConfig,
   });
 };
