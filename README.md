@@ -632,7 +632,7 @@ The script is wired up once in `package.json`:
 
 ```json
 "scripts": {
-  "entity:generate": "node scripts/generate-entity.mjs"
+  "entity:generate": "node bin/cli.mjs entity"
 }
 ```
 

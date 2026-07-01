@@ -22,7 +22,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "entity:generate": "node scripts/generate-entity.mjs"
+    "entity:generate": "node bin/cli.mjs entity"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

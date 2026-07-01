@@ -27,3 +27,14 @@ export const getTagsDb = async () => {
 //     shape: "single",
 //   });
 //   await tags.remove({ id: one.id });
+
+// Multi-client: the factory takes any client, so bind it with the runner
+// import { createServiceRunner } from "@/services/core/runtime/runner";
+// import type { SupabaseClient } from "@supabase/supabase-js";
+//
+// const generateTagsDb = (client: SupabaseClient) =>
+//   createDbService({ tableName: "tags", supabaseClient: client });
+// const runWithTagsDb = createServiceRunner(generateTagsDb);
+//
+// await runWithTagsDb("admin", (tags) => tags.getAll({}));  // bypass RLS
+// await runWithTagsDb("public", (tags) => tags.getAll({})); // cache-safe read
