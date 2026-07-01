@@ -1,5 +1,4 @@
-import { resolveClient } from "@/lib/supabase";
-import { response } from "@/utils/response";
+import { response } from "@/services/core/response";
 import type {
   BaseStorageInstance,
   PayloadRecord,
@@ -14,6 +13,7 @@ import { DiscoveredFile } from "../types/storage";
 export function createStorageService({
   bucketName,
   groupFolder = "uploads",
+  supabaseClient,
 }: StorageServiceConfig): BaseStorageInstance {
   // Extracts relative path from absolute Supabase URL
   const extractPathFromUrl = (url: string): string => {
@@ -37,16 +37,10 @@ export function createStorageService({
   /**
    * UPLOAD FILE
    */
-  const upload: BaseStorageInstance["upload"] = async ({
-    file,
-    path,
-    clientType = "server",
-  }) => {
-    const supabase = await resolveClient(clientType);
-
+  const upload: BaseStorageInstance["upload"] = async ({ file, path }) => {
     const finalPath = getFinalPath(file, path ?? "", groupFolder);
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabaseClient.storage
       .from(bucketName)
       .upload(finalPath, file, {
         contentType: (file as File).type || undefined,
@@ -56,7 +50,7 @@ export function createStorageService({
       return response("", false, error.message, "File upload failed");
     }
 
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = supabaseClient.storage
       .from(bucketName)
       .getPublicUrl(data.path);
 
@@ -71,14 +65,10 @@ export function createStorageService({
   /**
    * DELETE FILE
    */
-  const remove: BaseStorageInstance["remove"] = async ({
-    fileUrl,
-    clientType = "server",
-  }) => {
-    const supabase = await resolveClient(clientType);
+  const remove: BaseStorageInstance["remove"] = async ({ fileUrl }) => {
     const filePath = extractPathFromUrl(fileUrl);
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabaseClient.storage
       .from(bucketName)
       .remove([filePath]);
 
@@ -92,17 +82,13 @@ export function createStorageService({
   /**
    * REMOVE TREE
    */
-  const removeTree: BaseStorageInstance["removeTree"] = async ({
-    payload,
-    clientType = "server",
-  }) => {
+  const removeTree: BaseStorageInstance["removeTree"] = async ({ payload }) => {
     const urls = collectUrls(payload, [], bucketName, groupFolder);
 
     await Promise.all(
       urls.map((url) =>
         remove({
           fileUrl: url,
-          clientType,
         }),
       ),
     );
@@ -115,7 +101,6 @@ export function createStorageService({
    */
   const processUploadTree: BaseStorageInstance["processUploadTree"] = async ({
     payload,
-    clientType = "server",
     payloadKey,
   }) => {
     const result = { ...payload };
@@ -128,7 +113,6 @@ export function createStorageService({
       const uploaded = await upload({
         file: fileMatch.file,
         path: folderSlug,
-        clientType,
       });
 
       if (!uploaded.success) {
@@ -148,7 +132,6 @@ export function createStorageService({
     databaseSnapshot,
     payload,
     payloadKey,
-    clientType = "server",
   }) => {
     const result = { ...payload };
 
@@ -168,7 +151,6 @@ export function createStorageService({
       const uploaded = await upload({
         file: fileMatch.file,
         path: folderSlug,
-        clientType,
       });
 
       if (!uploaded.success) {
@@ -186,7 +168,6 @@ export function createStorageService({
       if (!remainingUrls.has(oldUrl)) {
         await remove({
           fileUrl: oldUrl,
-          clientType,
         });
       }
     }

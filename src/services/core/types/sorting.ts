@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@/utils/response";
+import type { ApiResponse } from "@/services/core/response";
 
 import type { BaseDbInstance } from "./db";
 import type { BaseParams, SortIds, WithId, WithPayload } from "./shared";
@@ -30,5 +30,5 @@ export interface BaseSortingInstance {
   ) => Promise<ApiResponse<unknown>>;
   sortByOrder: <T extends { id: number }>(
     params: SortByOrderParams<T>,
-  ) => Promise<T[]>;
+  ) => Promise<ApiResponse<T[]>>;
 }

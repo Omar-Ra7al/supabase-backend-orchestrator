@@ -1,9 +1,7 @@
-import { updateTag } from "next/cache";
-import { ApiResponse, response } from "@/utils/response";
+import { ApiResponse, response } from "@/services/core/response";
 
 import type {
   BaseEntityInstance,
-  BaseParams,
   EntityCreateParams,
   EntityGetAllSortedParams,
   EntityGetByIdParams,
@@ -14,19 +12,31 @@ import type {
   EntityUpdateParams,
   PayloadRecord,
 } from "@/services/core/types";
+
 import { createStorageService, hasBinaryAssets } from "./factories/storage";
 import { createSortingService } from "./factories/sorting";
 import { createDbService } from "./factories/db";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export function createEntityService({
   dbServiceConfig,
   sortingServiceConfig,
   storageServiceConfig,
-}: EntityServiceConfig): BaseEntityInstance {
-  const dbService = createDbService(dbServiceConfig);
+  updateTag,
+  supabaseClient,
+}: EntityServiceConfig & { supabaseClient: SupabaseClient } & {
+  updateTag?: (tag: string) => void;
+}): BaseEntityInstance {
+  const dbService = createDbService({
+    ...dbServiceConfig,
+    supabaseClient,
+  });
 
   const storageService = storageServiceConfig
-    ? createStorageService(storageServiceConfig)
+    ? createStorageService({
+        ...storageServiceConfig,
+        supabaseClient,
+      })
     : undefined;
 
   const sortingService = sortingServiceConfig
@@ -34,13 +44,16 @@ export function createEntityService({
         dbService: createDbService({
           tableName: sortingServiceConfig.tableName,
           primaryKey: sortingServiceConfig.primaryKey,
+          supabaseClient,
         }),
         sortRowId: sortingServiceConfig.sortRowId,
       })
     : undefined;
 
   const invalidateCache = () => {
-    if (dbServiceConfig.cacheTag) updateTag(dbServiceConfig.cacheTag);
+    if (dbServiceConfig.cacheTag && updateTag) {
+      updateTag(dbServiceConfig.cacheTag);
+    }
   };
 
   const validateStorageRequirement = (payload: PayloadRecord) => {
@@ -60,26 +73,19 @@ export function createEntityService({
     /**
      * CREATE
      */
-    create: async <T extends object>({
-      payload,
-      clientType = "server",
-    }: EntityCreateParams<T>) => {
-      const storageGuardError = validateStorageRequirement(
-        payload as PayloadRecord,
-      );
+    create: async <T extends object>({ payload }: EntityCreateParams<T>) => {
+      const storageGuardError = validateStorageRequirement(payload as PayloadRecord);
       if (storageGuardError) return storageGuardError as ApiResponse<T>;
 
       const targetPayload = storageService
         ? await storageService.processUploadTree({
             payload: payload as PayloadRecord,
             payloadKey: storageServiceConfig?.payloadKey,
-            clientType,
           })
         : payload;
 
       const result = await dbService.create<T>({
         payload: targetPayload as T,
-        clientType,
       });
 
       if (result.success) invalidateCache();
@@ -95,17 +101,13 @@ export function createEntityService({
     /**
      * UPDATE
      */
-    update: async <T extends object>({
-      id,
-      payload,
-      clientType = "server",
-    }: EntityUpdateParams<T>) => {
-      const storageGuardError = validateStorageRequirement(
-        payload as PayloadRecord,
-      );
+    update: async <T extends object>({ id, payload }: EntityUpdateParams<T>) => {
+      const storageGuardError = validateStorageRequirement(payload as PayloadRecord);
       if (storageGuardError) return storageGuardError as ApiResponse<T>;
 
-      const databaseSnapshot = await dbService.getById<T>({ id, clientType });
+      const databaseSnapshot = await dbService.getById<T>({
+        id,
+      });
 
       let targetPayload = payload;
       if (storageService && databaseSnapshot.success && databaseSnapshot.data) {
@@ -113,14 +115,12 @@ export function createEntityService({
           databaseSnapshot: databaseSnapshot.data as PayloadRecord,
           payload: payload as PayloadRecord,
           payloadKey: storageServiceConfig?.payloadKey,
-          clientType,
         })) as T;
       }
 
       const result = await dbService.update<T>({
         id,
         payload: targetPayload,
-        clientType,
       });
 
       if (result.success) invalidateCache();
@@ -136,12 +136,11 @@ export function createEntityService({
     /**
      * REMOVE
      */
-    remove: async <T extends object = PayloadRecord>({
-      id,
-      clientType = "server",
-    }: EntityRemoveParams) => {
-      const databaseSnapshot = await dbService.getById<T>({ id, clientType });
-      const result = await dbService.remove<T>({ id, clientType });
+    remove: async <T extends object = PayloadRecord>({ id }: EntityRemoveParams) => {
+      const databaseSnapshot = await dbService.getById<T>({
+        id,
+      });
+      const result = await dbService.remove<T>({ id });
 
       if (result.success) {
         invalidateCache();
@@ -149,12 +148,11 @@ export function createEntityService({
         if (storageService && databaseSnapshot.data) {
           await storageService.removeTree({
             payload: databaseSnapshot.data as PayloadRecord,
-            clientType,
           });
         }
 
         if (sortingService) {
-          await sortingService.removeItemFromOrder({ id, clientType });
+          await sortingService.removeItemFromOrder({ id });
         }
       }
 
@@ -169,10 +167,8 @@ export function createEntityService({
     /**
      * GET ALL
      */
-    getAll: async <T extends object>({
-      clientType = "public",
-    }: BaseParams = {}) => {
-      const result = await dbService.getAll<T>({ clientType });
+    getAll: async <T extends object>() => {
+      const result = await dbService.getAll<T>({});
       return response(
         result.data ?? [],
         result.success,
@@ -184,11 +180,8 @@ export function createEntityService({
     /**
      * GET BY ID
      */
-    getById: async <T extends object>({
-      id,
-      clientType = "public",
-    }: EntityGetByIdParams) => {
-      const result = await dbService.getById<T>({ id, clientType });
+    getById: async <T extends object>({ id }: EntityGetByIdParams) => {
+      const result = await dbService.getById<T>({ id });
       return response(
         result.data,
         result.success,
@@ -200,7 +193,7 @@ export function createEntityService({
     /**
      * GET WITH QUERY
      */
-    get: (async <T extends object>(query: EntityGetParams<T> = {}) => {
+    get: (async <T extends object>(query: EntityGetParams<T>) => {
       const result = await dbService.get(query);
       return response(
         result.data,
@@ -213,19 +206,17 @@ export function createEntityService({
     /**
      * GET SORT ORDER ARRAY
      */
-    getSort: async ({ clientType = "public" }: BaseParams = {}) => {
-      if (!sortingService)
-        return response(null, false, null, "Sorting service is not enabled");
-      return sortingService.getSort({ clientType });
+    getSort: async () => {
+      if (!sortingService) return response(null, false, null, "Sorting service is not enabled");
+      return sortingService.getSort({});
     },
 
     /**
      * SAVE SORT ORDER ARRAY
      */
-    saveSort: async ({ ids, clientType = "server" }: EntitySaveSortParams) => {
-      if (!sortingService)
-        return response(null, false, null, "Sorting service is not enabled");
-      const res = await sortingService.saveSort({ ids, clientType });
+    saveSort: async ({ ids }: EntitySaveSortParams) => {
+      if (!sortingService) return response(null, false, null, "Sorting service is not enabled");
+      const res = await sortingService.saveSort({ ids });
       if (res.success) invalidateCache();
       return res;
     },
@@ -233,17 +224,13 @@ export function createEntityService({
     /**
      * GET ALL SORTED ENTITIES
      */
-    getAllSorted: async <T extends object>(
-      query: EntityGetAllSortedParams<T>,
-    ) => {
+    getAllSorted: async <T extends object>(query: EntityGetAllSortedParams<T>) => {
       if (!sortingService) {
         return response<T[]>([], false, null, "Sorting service is not enabled");
       }
 
       // 1. Fetch the tracking row sequence order map
-      const sortResponse = await sortingService.getSort({
-        clientType: query.clientType,
-      });
+      const sortResponse = await sortingService.getSort({});
       if (!sortResponse.success) {
         return response<T[]>(
           [],
@@ -260,9 +247,8 @@ export function createEntityService({
       const itemsResponse = query.where
         ? await dbService.get<T>({
             where: query.where,
-            clientType: query.clientType,
           })
-        : await dbService.getAll<T>({ clientType: query.clientType });
+        : await dbService.getAll<T>({});
 
       // Guard clause against DB failures
       if (!itemsResponse.success) {
@@ -278,13 +264,17 @@ export function createEntityService({
       const rawItems = itemsResponse.data as unknown as { id: number }[];
 
       // 3. Delegate safely to the smart sorting engine helper
-      const sortedData = await sortingService.sortByOrder<{ id: number }>({
+      const sortResult = await sortingService.sortByOrder<{ id: number }>({
         items: rawItems,
         order: sortOrder,
       });
 
+      if (!sortResult.success) {
+        return response<T[]>([], false, sortResult.error, sortResult.message);
+      }
+
       return response<T[]>(
-        sortedData as T[],
+        sortResult.data as T[],
         true,
         null,
         "Sorted elements array fetched successfully",

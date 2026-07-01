@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@/utils/response";
+import type { ApiResponse } from "@/services/core/response";
 
 import type {
   BaseParams,
@@ -6,10 +6,12 @@ import type {
   WithPayload,
   WithPayloadKey,
 } from "./shared";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export type StorageServiceConfig = {
   bucketName: string;
   groupFolder?: string;
+  supabaseClient: SupabaseClient;
 };
 
 export type StorageUploadParams = BaseParams & {

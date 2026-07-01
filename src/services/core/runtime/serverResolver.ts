@@ -1,23 +1,19 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { createPublicServerClient } from "@/lib/supabase/publicServer";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createBrowserClient } from "@/lib/supabase/client";
 
-export type DbClientType = "server" | "public" | "admin" | "browser";
+export type ServerClientType = "server" | "public" | "admin";
 
 // Resolve a Supabase client based on the client type `lazily` (to avoid initializing multiple clients in a single request)
-export const resolveClient = (type: DbClientType = "server") => {
+export const resolveClient = async (type: ServerClientType = "server") => {
   switch (type) {
     case "server":
-      return createServerClient();
+      return await createServerClient();
     case "public":
       return createPublicServerClient();
     case "admin":
       return createAdminClient();
-    case "browser":
-      return createBrowserClient();
     default:
-      const exhaustiveCheck: never = type;
-      throw new Error(`Unhandled client type: ${exhaustiveCheck}`);
+      throw new Error(`Unhandled client type: ${type}`);
   }
 };

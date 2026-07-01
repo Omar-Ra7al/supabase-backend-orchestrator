@@ -1,10 +1,9 @@
 import { createEntityService } from "@/services/core/entity";
 import { EntityServiceConfig } from "@/services/core/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-/**
- * Copy this folder to `services/entities/your-feature/` and replace placeholders.
- */
-export const projectConfig: EntityServiceConfig = {
+// Configuration
+export const projectServiceConfig: EntityServiceConfig = {
   dbServiceConfig: {
     tableName: "projects",
     cacheTag: "projects",
@@ -17,8 +16,17 @@ export const projectConfig: EntityServiceConfig = {
   sortingServiceConfig: {
     tableName: "sort",
     sortRowId: "projects",
-    primaryKey: "column_id",
   },
 };
 
-export const projectService = createEntityService(projectConfig);
+// Pure generator
+export const generateProjectService = (
+  client: SupabaseClient,
+  updateTag?: (tag: string) => void,
+) => {
+  return createEntityService({
+    supabaseClient: client,
+    updateTag,
+    ...projectServiceConfig,
+  });
+};

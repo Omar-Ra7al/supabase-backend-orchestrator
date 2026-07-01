@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@/utils/response";
+import type { ApiResponse } from "@/services/core/response";
 
 import type { DbServiceConfig, GetShape } from "./db";
 import type { SortingServiceConfig } from "./sorting";
@@ -19,9 +19,13 @@ export type EntitySortingConfig = Omit<SortingServiceConfig, "dbService"> & {
 };
 
 export type EntityServiceConfig = {
-  dbServiceConfig: DbServiceConfig & { cacheTag?: string };
+  dbServiceConfig: Omit<DbServiceConfig, "supabaseClient"> & {
+    cacheTag?: string;
+  };
+  storageServiceConfig?: Omit<StorageServiceConfig, "supabaseClient"> & {
+    payloadKey?: WithPayloadKey;
+  };
   sortingServiceConfig?: EntitySortingConfig;
-  storageServiceConfig?: StorageServiceConfig & { payloadKey?: WithPayloadKey };
 };
 
 export type EntityCreateParams<T> = WithPayload<T>;
@@ -60,7 +64,7 @@ export interface BaseEntityInstance {
   remove: <T extends object = PayloadRecord>(
     params: EntityRemoveParams,
   ) => Promise<ApiResponse<T>>;
-  getAll: <T extends object>(params?: BaseParams) => Promise<ApiResponse<T[]>>;
+  getAll: <T extends object>(params: BaseParams) => Promise<ApiResponse<T[]>>;
   getById: <T extends object>(
     params: EntityGetByIdParams,
   ) => Promise<ApiResponse<T>>;
@@ -68,7 +72,7 @@ export interface BaseEntityInstance {
     params: EntityGetParams<T> & { shape: "single" },
   ): Promise<ApiResponse<T | null>>;
   get<T extends object>(params?: EntityGetParams<T>): Promise<ApiResponse<T[]>>;
-  getSort: (params?: BaseParams) => Promise<ApiResponse<unknown>>;
+  getSort: (params: BaseParams) => Promise<ApiResponse<unknown>>;
   saveSort: (params: EntitySaveSortParams) => Promise<ApiResponse<unknown>>;
   getAllSorted: <T extends object>(
     params: EntityGetAllSortedParams<T>,
