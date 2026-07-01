@@ -1,9 +1,9 @@
 "use server";
 
 import { getArticleService } from "./core";
+import { ArticleSchemaTypes } from "@/schemas/articleSchema";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const createArticle = async (payload: any) => {
+export const createArticle = async (payload: ArticleSchemaTypes) => {
   const service = await getArticleService();
   return await service.create({ payload });
 };

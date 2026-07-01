@@ -1,7 +1,7 @@
 export type {
   BaseId,
   BaseParams,
-  DbClientType,
+  ServerClientType,
   OrderBy,
   PayloadRecord,
   SortIds,

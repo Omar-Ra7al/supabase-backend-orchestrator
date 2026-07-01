@@ -28,11 +28,11 @@ export const featureServiceConfig: EntityServiceConfig = {
 
 export const generateFeatureService = (
   client: SupabaseClient,
-  revalidateFn?: (tag: string) => void,
+  updateTag?: (tag: string) => void,
 ) => {
   return createEntityService({
     supabaseClient: client,
-    revalidateFn,
+    updateTag,
     ...featureServiceConfig,
   });
 };

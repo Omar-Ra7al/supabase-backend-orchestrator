@@ -1,7 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { createEntityService } from "@/services/core/entity";
 import { EntityServiceConfig } from "@/services/core/types";
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 
 /**
  * Single-client example: a server-only entity. Every action goes through
@@ -14,7 +14,7 @@ export const articleServiceConfig: EntityServiceConfig = {
     primaryKey: "id",
   },
   storageServiceConfig: {
-    bucketName: "articles",
+    bucketName: "test",
     groupFolder: "articles",
   },
 };
@@ -23,7 +23,7 @@ export const getArticleService = async () => {
   const client = await createServerClient();
   return createEntityService({
     supabaseClient: client,
-    revalidateFn: revalidateTag as (tag: string) => void,
+    updateTag,
     ...articleServiceConfig,
   });
 };

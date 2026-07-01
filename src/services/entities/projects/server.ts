@@ -1,47 +1,16 @@
 "use server";
 
-import { revalidateTag } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createServerClient } from "@/lib/supabase/server";
-import { createPublicServerClient } from "@/lib/supabase/publicServer";
-
 import { generateProjectService } from "./core";
-
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createServiceRunner } from "@/services/core/runtime/runner";
 import type { ProjectSchemaTypes } from "@/schemas/projectSchema";
 
-const getProjectService = async (customClient?: SupabaseClient) => {
-  const client = customClient ?? (await createServerClient());
-  const service = generateProjectService(
-    client,
-    revalidateTag as (tag: string) => void,
-  );
-  return service;
-};
+const runWithService = createServiceRunner(generateProjectService);
 
-export const createProject = async ({
-  payload,
-}: {
-  payload: ProjectSchemaTypes;
-}) => {
-  const projectService = await getProjectService();
-  return await projectService.create({ payload });
-};
+export const createProjectWithServerClient = async ({ payload }: { payload: ProjectSchemaTypes }) =>
+  await runWithService("server", (service) => service.create({ payload }));
 
-export const createProjectAsAdmin = async ({
-  payload,
-}: {
-  payload: ProjectSchemaTypes;
-}) => {
-  const projectService = await getProjectService(createAdminClient());
-  return await projectService.create({ payload });
-};
+export const createProjectWithAdminClient = async ({ payload }: { payload: ProjectSchemaTypes }) =>
+  await runWithService("admin", (service) => service.create({ payload }));
 
-export const createProjectAsPublic = async ({
-  payload,
-}: {
-  payload: ProjectSchemaTypes;
-}) => {
-  const projectService = await getProjectService(createPublicServerClient());
-  return await projectService.create({ payload });
-};
+export const createProjectWithPublicClient = async ({ payload }: { payload: ProjectSchemaTypes }) =>
+  await runWithService("public", (service) => service.create({ payload }));

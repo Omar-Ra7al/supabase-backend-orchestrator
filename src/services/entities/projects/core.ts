@@ -22,11 +22,11 @@ export const projectServiceConfig: EntityServiceConfig = {
 // Pure generator
 export const generateProjectService = (
   client: SupabaseClient,
-  revalidateFn?: (tag: string) => void,
+  updateTag?: (tag: string) => void,
 ) => {
   return createEntityService({
     supabaseClient: client,
-    revalidateFn,
+    updateTag,
     ...projectServiceConfig,
   });
 };

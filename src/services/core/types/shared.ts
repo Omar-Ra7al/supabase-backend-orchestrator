@@ -1,6 +1,6 @@
-import type { DbClientType } from "@/lib/supabase";
+import type { ServerClientType } from "@/services/core/runtime/serverResolver";
 
-export type { DbClientType };
+export type { ServerClientType };
 
 export type BaseParams = object;
 

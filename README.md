@@ -10,8 +10,8 @@ Supabase + Next.js patterns that are usually painful — client types, caching, 
 
 - **One-line CRUD** — `create`, `update`, `remove`, `getById`, `get`, `getAll`, `getAllSorted`, `saveSort` on every entity, no per-table boilerplate.
 - **Automatic file handling** — drop a `File` in your payload and it is uploaded, renamed uniquely, and its public URL saved in the row. Removals and replacements are cleaned up for you.
-- **Four Supabase clients, one swap** — server (auth), public (cache-safe), admin (RLS bypass), browser — injected per call, never module-scoped.
-- **Cache-correct by default** — writes call `revalidateTag`; cached reads use the cookie-free public client so `unstable_cache` never breaks.
+- **Four Supabase clients, one swap** — server (auth), public (cache-safe), admin (RLS bypass) resolved per call by the runner; browser injected via the `client.ts` hook — never module-scoped.
+- **Cache-correct by default** — writes call `updateTag`; cached reads use the cookie-free public client so `unstable_cache` never breaks.
 - **Uniform responses** — every method returns `{ data, success, error, message }`.
 - **Typed end to end** — pass your own payload/record types; `data` is typed at the call site.
 - **Copy-paste templates + scaffold script** — single- or multi-client starter; scaffold a table in seconds with `npm run entity:generate`.
@@ -67,9 +67,7 @@ const slug = title.toLowerCase().replace(/\s+/g, "-");
 const ext = image.name.split(".").pop();
 const path = `projects/${slug}/cover-${Date.now()}.${ext}`;
 
-const { error: uploadError } = await supabase.storage
-  .from("projects")
-  .upload(path, image);
+const { error: uploadError } = await supabase.storage.from("projects").upload(path, image);
 if (uploadError) return { success: false, error: uploadError.message };
 
 const {
@@ -83,7 +81,7 @@ const { data, error } = await supabase
   .single();
 if (error) return { success: false, error: error.message };
 
-revalidateTag("projects");
+updateTag("projects");
 return { success: true, data };
 ```
 
@@ -91,7 +89,7 @@ return { success: true, data };
 
 ```ts
 const { data, success } = await service.create({ payload });
-// File upload, unique naming, public URL, and revalidateTag all handled
+// File upload, unique naming, public URL, and updateTag all handled
 ```
 
 The upload, the unique path, the public URL, the typed insert, and the cache tag are all handled by the layer. You only ever describe the table once (see [Feature configuration](#feature-configuration--the-usage)).
@@ -111,18 +109,19 @@ From a form submit to Supabase, here is the whole path — note that you only ev
 ```mermaid
 flowchart TD
   Form["form.tsx (your form)"] -->|"createProject(data)"| Hook["useProjectService() / server action"]
-  Hook -->|"resolve client"| Gen["generateProjectService(client)"]
+  Hook -->|"runWithService(clientType, action)"| Runner["createServiceRunner -> resolveClient"]
+  Runner --> Gen["generateProjectService(client, updateTag)"]
   Gen --> Orch["createEntityService (orchestrator)"]
   Orch --> Storage["storage factory: upload File -> public URL"]
   Orch --> Db["db factory: insert/update/delete"]
-  Orch --> Cache["revalidateTag(cacheTag)"]
+  Orch --> Cache["updateTag(cacheTag)"]
   Db --> Supabase[("Supabase Postgres + Storage")]
   Storage --> Supabase
 ```
 
 1. A component calls a thin action/hook with a typed payload.
-2. The getter resolves the right Supabase client (server / admin / public / browser).
-3. The orchestrator uploads any `File` fields, runs the DB op, then invalidates the cache tag.
+2. `runWithService(clientType, action)` resolves the right server-side client (server / admin / public); client components bind the browser client through the `client.ts` hook.
+3. The orchestrator uploads any `File` fields, runs the DB op, then invalidates the cache tag with `updateTag`.
 4. A uniform `{ data, success, error, message }` comes back.
 
 The real call site stays this small:
@@ -140,11 +139,11 @@ const onSubmit = (data: ProjectData) => projectService.createProject(data);
 
 Every entity exposes its functionality through two (or three) entry points. Import from the one that matches your runtime — **never reach into `core.ts`**.
 
-| Import from | Use in | Exposes |
-| ----------- | ------ | ------- |
-| `@/services/entities/{feature}/client` | Client Components | `useFeatureService()` hook (bound to the browser client) |
-| `@/services/entities/{feature}/server` | Server Actions, Server Components | `"use server"` actions returning `response()` |
-| `@/services/entities/{feature}/core` | nothing — internal only | raw client-bound service factory |
+| Import from                            | Use in                            | Exposes                                                  |
+| -------------------------------------- | --------------------------------- | -------------------------------------------------------- |
+| `@/services/entities/{feature}/client` | Client Components                 | `useFeatureService()` hook (bound to the browser client) |
+| `@/services/entities/{feature}/server` | Server Actions, Server Components | `"use server"` actions returning `response()`            |
+| `@/services/entities/{feature}/core`   | nothing — internal only           | raw client-bound service factory                         |
 
 - **Client Components** → `@/services/entities/{feature}/client`. The hook memoizes a browser-client-bound service for instant UI updates.
 - **Server Actions / Server Components** → `@/services/entities/{feature}/server`. These wrappers resolve the correct client per request and are the only thing components should call for server work.
@@ -170,11 +169,11 @@ They are "pure" in the sense that they hold no app state and make no decisions a
 
 `services/core/entity.ts` exports `createEntityService`, the manager that wires the factories together and owns the sequencing the factories deliberately avoid:
 
-- Calls the storage factory first (upload `File`s → public URLs), then the db factory (write the row), then `revalidateTag` on success.
+- Calls the storage factory first (upload `File`s → public URLs), then the db factory (write the row), then `updateTag` on success.
 - On update it fetches the current row so the storage factory can diff replaced/removed images; on delete it removes the row's files and its sort entry.
 - Normalizes everything into the uniform `{ data, success, error, message }` response.
 
-It is the only layer that calls `revalidateTag` — the factories never touch the cache.
+It is the only layer that calls `updateTag` — the factories never touch the cache.
 
 ### Feature configuration — the usage
 
@@ -207,13 +206,13 @@ The only difference between entities is **how the Supabase client is bound** to 
 ```ts
 // Server-only: always the authenticated server client (articles/, templates/single-client/)
 import { createServerClient } from "@/lib/supabase/server";
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 
 export const getFeatureService = async () => {
   const client = await createServerClient();
   return createEntityService({
     supabaseClient: client,
-    revalidateFn: revalidateTag,
+    updateTag,
     ...featureServiceConfig,
   });
 };
@@ -221,40 +220,42 @@ export const getFeatureService = async () => {
 // Any client passed in — server, admin, public, or browser (projects/, templates/multi-client/)
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const generateFeatureService = (
-  client: SupabaseClient,
-  revalidateFn?: (tag: string) => void,
-) =>
+export const generateFeatureService = (client: SupabaseClient, updateTag?: (tag: string) => void) =>
   createEntityService({
     supabaseClient: client,
-    revalidateFn,
+    updateTag,
     ...featureServiceConfig,
   });
 ```
 
-For the generator, `server.ts` resolves the client per request:
+For the multi-client generator, `server.ts` uses the runner to resolve the client per call and inject `updateTag`:
 
 ```ts
-const getFeatureService = async (customClient?: SupabaseClient) => {
-  const client = customClient ?? (await createServerClient());
-  return generateFeatureService(client, revalidateTag);
-};
+import { createServiceRunner } from "@/services/core/runtime/runner";
+
+const runWithService = createServiceRunner(generateFeatureService);
+
+export const createFeature = async ({ payload }: { payload: YourSchemaType }) =>
+  runWithService("server", (service) => service.create({ payload }));
+
+export const createFeatureAsAdmin = async ({ payload }: { payload: YourSchemaType }) =>
+  runWithService("admin", (service) => service.create({ payload }));
 ```
 
-| Config block | Required | Description |
-| ------------ | -------- | ----------- |
-| `dbServiceConfig.tableName` | yes | Supabase table name |
-| `dbServiceConfig.cacheTag` | yes | Tag used for `revalidateTag` on writes |
-| `storageServiceConfig` | no | Enables automatic file upload/remove on create/update/delete |
-| `sortingServiceConfig` | no | Enables `getSort`, `saveSort`, `getAllSorted` |
-| `supabaseClient` | yes | Always passed at service creation — never in `EntityServiceConfig` |
+| Config block                | Required | Description                                                        |
+| --------------------------- | -------- | ------------------------------------------------------------------ |
+| `dbServiceConfig.tableName` | yes      | Supabase table name                                                |
+| `dbServiceConfig.cacheTag`  | yes      | Tag used for `updateTag` on writes                                 |
+| `storageServiceConfig`      | no       | Enables automatic file upload/remove on create/update/delete       |
+| `sortingServiceConfig`      | no       | Enables `getSort`, `saveSort`, `getAllSorted`                      |
+| `supabaseClient`            | yes      | Always passed at service creation — never in `EntityServiceConfig` |
 
 Omit `storageServiceConfig` or `sortingServiceConfig` when not needed, or remove both for db-only entities.
 
 **Server-only vs. any-client at a glance:**
 
 - **Server-only** (`articles/`, `templates/single-client/`) — `core.ts` exports an async `getFeatureService()` that always binds `createServerClient()`. `server.ts` calls it in each action.
-- **Any client** (`projects/`, `templates/multi-client/`) — `core.ts` exports a pure `generateFeatureService(client)`. `server.ts` resolves the client per request (server by default, with admin/public overrides) and `client.ts` passes `createBrowserClient()` for browser usage.
+- **Any client** (`projects/`, `templates/multi-client/`) — `core.ts` exports a pure `generateFeatureService(client)`. `server.ts` builds `runWithService = createServiceRunner(generateFeatureService)` and each action picks the client with `runWithService(clientType, action)` (`"server"` by default, `"admin"`/`"public"` overrides); `client.ts` passes `createBrowserClient()` for browser usage.
 
 Both start from the identical config object; pick the binding that matches where the entity is used.
 
@@ -291,7 +292,7 @@ flowchart LR
     Orch --> DbF[db factory]
     Orch --> StoreF[storage factory]
     Orch --> SortF[sorting factory]
-    Orch --> CacheF["revalidateTag"]
+    Orch --> CacheF["updateTag"]
     DbF --> Supa[("Supabase")]
     StoreF --> Supa
     SortF --> Supa
@@ -310,6 +311,9 @@ services/
 │   │   ├── db.ts
 │   │   ├── storage.ts
 │   │   └── sorting.ts
+│   ├── runtime/               # per-request client resolution
+│   │   ├── runner.ts          # createServiceRunner -> runWithService(clientType, action)
+│   │   └── serverResolver.ts  # resolveClient(type) — server / public / admin
 │   ├── types/
 │   └── README.MD
 │
@@ -326,10 +330,10 @@ services/
 
 ### Templates
 
-| Template | Files | `core.ts` exports | `server.ts` |
-| -------- | ----- | ----------------- | ----------- |
-| `templates/single-client/` | `core.ts`, `server.ts` | `featureServiceConfig` + `getFeatureService()` | Calls `getFeatureService()` from core |
-| `templates/multi-client/` | `core.ts`, `server.ts`, `client.ts` | `featureServiceConfig` + `generateFeatureService(client)` | Private `getFeatureService(customClient?)` |
+| Template                   | Files                               | `core.ts` exports                                         | `server.ts`                                             |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| `templates/single-client/` | `core.ts`, `server.ts`              | `featureServiceConfig` + `getFeatureService()`            | Calls `getFeatureService()` from core                   |
+| `templates/multi-client/`  | `core.ts`, `server.ts`, `client.ts` | `featureServiceConfig` + `generateFeatureService(client)` | `createServiceRunner` + `runWithService(clientType, …)` |
 
 Live examples: `entities/articles/` (single client), `entities/projects/` (multi client), and `entities/standalone-factories/` (one factory at a time).
 
@@ -388,16 +392,16 @@ await service.getAllSorted<Record>({ where: { status: "approved" } });
 
 ### At a glance
 
-| Method | Params | Returns | Notes |
-| ------ | ------ | ------- | ----- |
-| `create` | `{ payload }` | `T` | uploads files, revalidates |
-| `update` | `{ id, payload }` | `T` | diffs files, revalidates |
-| `remove` | `{ id }` | `T` | cleans storage + sort entry |
-| `getById` | `{ id }` | `T` | primary-key lookup |
-| `get` | `{ where?, limit?, orderBy?, shape? }` | `T[]` or `T \| null` | `shape: "single"` for one row |
-| `getAll` | `{}` | `T[]` | full table |
-| `getAllSorted` | `{ where? }` | `T[]` | respects saved order |
-| `saveSort` / `getSort` | `{ ids }` / `{}` | order row | needs `sortingServiceConfig` |
+| Method                 | Params                                 | Returns              | Notes                         |
+| ---------------------- | -------------------------------------- | -------------------- | ----------------------------- |
+| `create`               | `{ payload }`                          | `T`                  | uploads files, revalidates    |
+| `update`               | `{ id, payload }`                      | `T`                  | diffs files, revalidates      |
+| `remove`               | `{ id }`                               | `T`                  | cleans storage + sort entry   |
+| `getById`              | `{ id }`                               | `T`                  | primary-key lookup            |
+| `get`                  | `{ where?, limit?, orderBy?, shape? }` | `T[]` or `T \| null` | `shape: "single"` for one row |
+| `getAll`               | `{}`                                   | `T[]`                | full table                    |
+| `getAllSorted`         | `{ where? }`                           | `T[]`                | respects saved order          |
+| `saveSort` / `getSort` | `{ ids }` / `{}`                       | order row            | needs `sortingServiceConfig`  |
 
 See [Query shape](#query-shape-get) and [Typed responses](#typed-responses) for return-type details.
 
@@ -425,14 +429,14 @@ What makes it easy:
 
 Lifecycle:
 
-| Operation | You pass | Orchestrator does |
-| --------- | -------- | ----------------- |
-| **create** | `File` field(s) | upload → store public URL(s) in the new row |
-| **create** | only strings | plain insert, no storage call |
-| **update** | new `File` | upload new, delete the replaced old file |
-| **update** | unchanged URL | left as-is |
-| **update** | URL removed from payload | old file deleted from bucket |
-| **remove** | `{ id }` | row deleted, then all its bucket files removed |
+| Operation  | You pass                     | Orchestrator does                                                       |
+| ---------- | ---------------------------- | ----------------------------------------------------------------------- |
+| **create** | `File` field(s)              | upload → store public URL(s) in the new row                             |
+| **create** | only strings                 | plain insert, no storage call                                           |
+| **update** | new `File`                   | upload new, delete the replaced old file                                |
+| **update** | unchanged URL                | left as-is                                                              |
+| **update** | URL removed from payload     | old file deleted from bucket                                            |
+| **remove** | `{ id }`                     | row deleted, then all its bucket files removed                          |
 | **nested** | `File` inside arrays/objects | uploaded too (scan is recursive); manual cleanup only for exotic shapes |
 
 If a payload contains `File`s but no `storageServiceConfig` is set, `create`/`update` return a `"Storage service is not enabled"` error (`validateStorageRequirement`). For nested uploads in unusual shapes (e.g. `sub_items[].image`), keep manual cleanup logic in `server.ts`.
@@ -545,20 +549,21 @@ Inner factory responses use `success` (not `!error`) before cache invalidation a
 
 Four Supabase clients are available from `@/lib/supabase`:
 
-| Client | Factory | Use case |
-| ------ | ------- | -------- |
-| Server | `createServerClient()` | Cookie-aware, authenticated server actions (default writes) |
-| Public | `createPublicServerClient()` | Cache-safe reads inside `unstable_cache` (no cookies) |
-| Admin | `createAdminClient()` | Bypass RLS for admin operations |
-| Browser | `createBrowserClient()` | Client components via `client.ts` hook |
+| Client  | Factory                      | Use case                                                    |
+| ------- | ---------------------------- | ----------------------------------------------------------- |
+| Server  | `createServerClient()`       | Cookie-aware, authenticated server actions (default writes) |
+| Public  | `createPublicServerClient()` | Cache-safe reads inside `unstable_cache` (no cookies)       |
+| Admin   | `createAdminClient()`        | Bypass RLS for admin operations                             |
+| Browser | `createBrowserClient()`      | Client components via `client.ts` hook                      |
 
-Multi-client entities pass these into `getFeatureService(customClient)`. Single-client entities always use `createServerClient()` via `getFeatureService()` in core.
+Multi-client entities select a server-side client with `runWithService(clientType, action)`; the browser client is bound separately in `client.ts`. Single-client entities always use `createServerClient()` via `getFeatureService()` in core.
 
 ```ts
-type DbClientType = "server" | "public" | "admin" | "browser";
+// @/services/core/runtime/serverResolver
+type ServerClientType = "server" | "public" | "admin";
 ```
 
-`resolveClient()` from `@/lib/supabase` is also available but entities resolve clients explicitly in `server.ts`.
+`resolveClient(type)` (in `services/core/runtime/serverResolver.ts`) maps a `ServerClientType` to the matching client and is what `createServiceRunner` calls under the hood — `"browser"` is not resolved here; use the `client.ts` hook for browser usage.
 
 ---
 
@@ -579,10 +584,7 @@ await featureService.getAllSorted({});
 await featureService.getAllSorted({ where: { status: "approved" } });
 
 export const getSortedItems = unstable_cache(
-  async () => {
-    const service = await getFeatureService(createPublicServerClient());
-    return service.getAllSorted({});
-  },
+  async () => runWithService("public", (service) => service.getAllSorted({})),
   ["sorted-items"],
   { tags: [featureServiceConfig.dbServiceConfig.cacheTag ?? ""] },
 );
@@ -594,20 +596,18 @@ export const getSortedItems = unstable_cache(
 
 Only **`entity.ts`** calls `updateTag` — not `factories/db.ts`. Cache tags live on `dbServiceConfig.cacheTag` and are invalidated after successful writes (`create`, `update`, `remove`, `saveSort`).
 
-Wrap custom reads with `unstable_cache` and the same tag. Use `createPublicServerClient()` inside the cache callback — never `createServerClient()` (cookies break caching). Requires the multi-client pattern so `getFeatureService` accepts a client override:
+Wrap custom reads with `unstable_cache` and the same tag. Resolve the public client with `runWithService("public", …)` inside the cache callback — never the server client (cookies break caching). Requires the multi-client pattern so the runner can pick the public client:
 
 ```ts
 export const getSortedApprovedItems = unstable_cache(
-  async () => {
-    const service = await getFeatureService(createPublicServerClient());
-    return service.getAllSorted({ where: { status: "approved" } });
-  },
+  async () =>
+    runWithService("public", (service) => service.getAllSorted({ where: { status: "approved" } })),
   ["sorted-approved-items"],
   { tags: [featureServiceConfig.dbServiceConfig.cacheTag ?? ""] },
 );
 ```
 
-If you need cached public reads, use `templates/multi-client/` (or add an optional `customClient` param to your getter).
+If you need cached public reads, use `templates/multi-client/` so `runWithService("public", …)` is available.
 
 ---
 
@@ -642,20 +642,20 @@ The script is wired up once in `package.json`:
 
 Prefer the [scaffold script](#scaffolding) above. To do it manually:
 
-| Need | Copy |
-| ---- | ---- |
-| Server-only, one authenticated client | `templates/single-client/` |
-| Browser hook, admin bypass, or public cached reads | `templates/multi-client/` |
+| Need                                               | Copy                       |
+| -------------------------------------------------- | -------------------------- |
+| Server-only, one authenticated client              | `templates/single-client/` |
+| Browser hook, admin bypass, or public cached reads | `templates/multi-client/`  |
 
 1. Copy the matching template → `services/entities/your-feature/`
 2. Replace placeholders (`your_table`, `your-cache-tag`, `YourData`, etc.)
 3. Add your payload/record type definitions in `@/schemas/`
 4. Import actions from `server.ts` in components — never import entity services directly
 
-| Pattern | `core.ts` | `server.ts` | `client.ts` |
-| ------- | --------- | ----------- | ----------- |
-| Single | `getFeatureService()` | calls getter from core | — |
-| Multi | `generateFeatureService(client)` | private `getFeatureService(customClient?)` | `useFeatureService()` hook |
+| Pattern | `core.ts`                        | `server.ts`                                      | `client.ts`                |
+| ------- | -------------------------------- | ------------------------------------------------ | -------------------------- |
+| Single  | `getFeatureService()`            | calls getter from core                           | —                          |
+| Multi   | `generateFeatureService(client)` | `createServiceRunner` + `runWithService(type,…)` | `useFeatureService()` hook |
 
 ---
 

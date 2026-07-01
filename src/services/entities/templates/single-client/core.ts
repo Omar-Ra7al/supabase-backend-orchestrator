@@ -7,7 +7,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { createEntityService } from "@/services/core/entity";
 import { EntityServiceConfig } from "@/services/core/types";
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 
 export const featureServiceConfig: EntityServiceConfig = {
   dbServiceConfig: {
@@ -31,7 +31,7 @@ export const getFeatureService = async () => {
   const client = await createServerClient();
   return createEntityService({
     supabaseClient: client,
-    revalidateFn: revalidateTag as (tag: string) => void,
+    updateTag,
     ...featureServiceConfig,
   });
 };

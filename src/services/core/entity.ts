@@ -22,10 +22,10 @@ export function createEntityService({
   dbServiceConfig,
   sortingServiceConfig,
   storageServiceConfig,
-  revalidateFn,
+  updateTag,
   supabaseClient,
 }: EntityServiceConfig & { supabaseClient: SupabaseClient } & {
-  revalidateFn?: (tag: string) => void;
+  updateTag?: (tag: string) => void;
 }): BaseEntityInstance {
   const dbService = createDbService({
     ...dbServiceConfig,
@@ -51,8 +51,8 @@ export function createEntityService({
     : undefined;
 
   const invalidateCache = () => {
-    if (dbServiceConfig.cacheTag && revalidateFn) {
-      revalidateFn(dbServiceConfig.cacheTag);
+    if (dbServiceConfig.cacheTag && updateTag) {
+      updateTag(dbServiceConfig.cacheTag);
     }
   };
 
@@ -74,9 +74,7 @@ export function createEntityService({
      * CREATE
      */
     create: async <T extends object>({ payload }: EntityCreateParams<T>) => {
-      const storageGuardError = validateStorageRequirement(
-        payload as PayloadRecord,
-      );
+      const storageGuardError = validateStorageRequirement(payload as PayloadRecord);
       if (storageGuardError) return storageGuardError as ApiResponse<T>;
 
       const targetPayload = storageService
@@ -103,13 +101,8 @@ export function createEntityService({
     /**
      * UPDATE
      */
-    update: async <T extends object>({
-      id,
-      payload,
-    }: EntityUpdateParams<T>) => {
-      const storageGuardError = validateStorageRequirement(
-        payload as PayloadRecord,
-      );
+    update: async <T extends object>({ id, payload }: EntityUpdateParams<T>) => {
+      const storageGuardError = validateStorageRequirement(payload as PayloadRecord);
       if (storageGuardError) return storageGuardError as ApiResponse<T>;
 
       const databaseSnapshot = await dbService.getById<T>({
@@ -143,9 +136,7 @@ export function createEntityService({
     /**
      * REMOVE
      */
-    remove: async <T extends object = PayloadRecord>({
-      id,
-    }: EntityRemoveParams) => {
+    remove: async <T extends object = PayloadRecord>({ id }: EntityRemoveParams) => {
       const databaseSnapshot = await dbService.getById<T>({
         id,
       });
@@ -216,8 +207,7 @@ export function createEntityService({
      * GET SORT ORDER ARRAY
      */
     getSort: async () => {
-      if (!sortingService)
-        return response(null, false, null, "Sorting service is not enabled");
+      if (!sortingService) return response(null, false, null, "Sorting service is not enabled");
       return sortingService.getSort({});
     },
 
@@ -225,8 +215,7 @@ export function createEntityService({
      * SAVE SORT ORDER ARRAY
      */
     saveSort: async ({ ids }: EntitySaveSortParams) => {
-      if (!sortingService)
-        return response(null, false, null, "Sorting service is not enabled");
+      if (!sortingService) return response(null, false, null, "Sorting service is not enabled");
       const res = await sortingService.saveSort({ ids });
       if (res.success) invalidateCache();
       return res;
@@ -235,9 +224,7 @@ export function createEntityService({
     /**
      * GET ALL SORTED ENTITIES
      */
-    getAllSorted: async <T extends object>(
-      query: EntityGetAllSortedParams<T>,
-    ) => {
+    getAllSorted: async <T extends object>(query: EntityGetAllSortedParams<T>) => {
       if (!sortingService) {
         return response<T[]>([], false, null, "Sorting service is not enabled");
       }
