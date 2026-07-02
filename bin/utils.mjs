@@ -1,8 +1,14 @@
-import { readdir, mkdir, readFile, writeFile, stat } from "node:fs/promises";
+import { readdir, mkdir, readFile, writeFile, stat, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
+import {
+  select as clackSelect,
+  confirm as clackConfirm,
+  isCancel,
+  cancel,
+} from "@clack/prompts";
 
 /** Root of this installed package (one level up from bin/). */
 export const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,6 +72,15 @@ export async function copyDir(from, to, { transform, filter } = {}) {
   }
 }
 
+/**
+ * Recursively delete `target` if it exists. Used before overwriting so stale
+ * files (e.g. multi-client `client.ts`) don't survive a switch to a template
+ * that no longer includes them.
+ */
+export async function cleanDir(target) {
+  await rm(target, { recursive: true, force: true });
+}
+
 /** Ask a single question on the terminal and resolve the trimmed answer. */
 export async function prompt(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -75,4 +90,33 @@ export async function prompt(question) {
   } finally {
     rl.close();
   }
+}
+
+/** Bail out cleanly when the user cancels a prompt (Ctrl+C / Esc). */
+function guardCancel(value) {
+  if (isCancel(value)) {
+    cancel("Cancelled. No changes made.");
+    process.exit(0);
+  }
+  return value;
+}
+
+/**
+ * Arrow-key select menu. `options` is `[{ value, label, hint? }]`.
+ * Returns the chosen `value`; exits cleanly on cancel.
+ */
+export async function selectMenu({ message, options, initialValue }) {
+  const choice = await clackSelect({ message, options, initialValue });
+  return guardCancel(choice);
+}
+
+/** Yes/No confirm menu. Returns a boolean; exits cleanly on cancel. */
+export async function confirmMenu({ message, active, inactive, initialValue }) {
+  const answer = await clackConfirm({
+    message,
+    active,
+    inactive,
+    initialValue,
+  });
+  return guardCancel(answer);
 }

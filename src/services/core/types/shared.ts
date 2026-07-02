@@ -1,7 +1,3 @@
-import type { ServerClientType } from "@/services/core/runtime/serverResolver";
-
-export type { ServerClientType };
-
 export type BaseParams = object;
 
 export type BaseId = number | string;

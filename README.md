@@ -9,27 +9,132 @@ Stop rewriting the same Supabase CRUD for every table. Describe a table once, ge
 ## Quick Start
 
 ```bash
-# 1. Drop the layer into an existing Next.js + Supabase project
+# 1. Drop the engine into an existing Next.js + Supabase project
 npx create-supabase-orchestrator
 
-# 2. Create a new entity
-npx create-supabase-orchestrator entity blog          # single-client (default)
-npx create-supabase-orchestrator entity blog multi    # multi-client (adds client.ts)
+# 2. (optional) Pull in the runnable examples + starter templates
+npx create-supabase-orchestrator examples
+
+# 3. Generate a new feature (target dir defaults to services/entities)
+npx create-supabase-orchestrator blog                     # asks single vs multi via a menu
+npx create-supabase-orchestrator services/features blog   # any dir you want
 ```
 
-`npx create-supabase-orchestrator` create three folders (writes under `src/` when it exists, else project root; asks before overwriting, or pass `--force` / `-y` in CI):
+`npx create-supabase-orchestrator` copies the engine only (writes under `src/` when it exists, else project root; arrow-key menus, or pass `--force` / `-y` in CI):
 
-- `services/core/` — the engine (orchestrator + db/storage/sorting factories)
-- `services/entities/` — `templates/` and `standalone-factories/` starting points
-- `lib/supabase/` — Standard client factories.
+- `services/core/` — the engine (orchestrator + db/storage/sorting factories). Always copied.
+- `lib/supabase/` — Standard client factories. The CLI **asks** whether to init these for you or bring your own.
   > *While you can initialize clients manually elsewhere, we **strongly recommend** this pattern as it aligns with official Supabase/Next.js best practices for SSR and RLS.*
+  > If you skip client init, the CLI asks how you'll connect clients — see [Bring your own Supabase clients](#bring-your-own-supabase-clients).
+
+Prompts are interactive **select menus** (arrow keys), not free text: on overwrite you pick `Overwrite` / `Skip`; client init is `Yes / No`; if you bring your own clients, you pick **wire `serverResolver.ts`** or **pass clients directly**. Pass `--force` / `-y` to skip every menu (overwrite in place, init clients) for CI.
+
+`npx create-supabase-orchestrator examples` copies the runnable demos and starting points into `services/entities/`:
+
+- `projects/` — live multi-client example
+- `articles/` — live single-client example
+- `standalone-factories/` — use one factory alone (`db` / `storage` / `sorting`)
+- `templates/` — `single-client/` and `multi-client/` starters
 
 Then make sure your project has:
 
-- the `@/`* path alias in `tsconfig.json`, e.g. `"paths": { "@/*": ["./src/*"] }`
+- the `@/*` path alias in `tsconfig.json`, e.g. `"paths": { "@/*": ["./src/*"] }`
 - peer deps: `npm i @supabase/supabase-js @supabase/ssr next`
 
-> In-repo equivalent of the entity generator: `npm run entity:generate blog [multi]`.
+> In-repo equivalent of the feature generator: `npm run entity:generate blog [multi]`.
+
+---
+
+## Bring your own Supabase clients
+
+Skipped `lib/supabase/` init? The CLI asks how you'll connect clients — pick one:
+
+- **Path A — Wire `serverResolver.ts`** — keeps `runWithService` for multi-client (recommended)
+- **Path B — Pass clients directly** — skip `runtime/`; bind clients in `core.ts` / `server.ts` / `client.ts`
+
+**Full guide** — Path A & Path B with code examples
+
+If you answer **"No, I have my own"** when the CLI asks to init `lib/supabase/`, bundled client factories are not copied — but `services/core/runtime/serverResolver.ts` and entity templates still expect Supabase clients somewhere.
+
+
+| Path                             | CLI choice                            | Best for                                              |
+| -------------------------------- | ------------------------------------- | ----------------------------------------------------- |
+| **A — Wire `serverResolver.ts`** | Wire them into `serverResolver.ts`    | Multi-client entities using `runWithService`          |
+| **B — Pass clients directly**    | Pass clients directly in entity files | Single-client or when you already have client helpers |
+
+
+### Path A — Wire `serverResolver.ts` (multi-client helper)
+
+Keep `services/core/runtime/` and point one file at your factories. Multi-client `server.ts` stays unchanged — `createServiceRunner` + `runWithService("server" | "admin" | "public", …)` keep working.
+
+Swap the imports in `services/core/runtime/serverResolver.ts`:
+
+```ts
+// before (bundled clients)
+import { createServerClient } from "@/lib/supabase/server";
+import { createPublicServerClient } from "@/lib/supabase/publicServer";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+// after (your factories)
+import { createServerClient } from "@/your-path/server";
+import { createPublicServerClient } from "@/your-path/publicServer";
+import { createAdminClient } from "@/your-path/admin";
+```
+
+Keep the `switch` on `"server" | "public" | "admin"`. When you generate entities, update `@/lib/supabase/*` imports in `core.ts` and `client.ts` to the same paths.
+
+You need four client types: authenticated server (writes), public server (cache-safe reads, no cookies), admin (RLS bypass), and browser (client components).
+
+### Path B — Pass clients directly (no runtime)
+
+The CLI skips `services/core/runtime/` and inlines `ServerClientType` in `types/shared.ts`. Bind clients yourself in each entity — no `createServiceRunner`.
+
+**Single-client** — change the import in `core.ts`; `getFeatureService()` stays the same:
+
+```ts
+import { createServerClient } from "@/your-path/server";
+
+export const getFeatureService = async () => {
+  const client = await createServerClient();
+  return createEntityService({ supabaseClient: client, updateTag, ...featureServiceConfig });
+};
+```
+
+**Multi-client** — drop `createServiceRunner` from `server.ts`; call `generateFeatureService` with your client per action:
+
+```ts
+import { updateTag } from "next/cache";
+import { generateFeatureService } from "./core";
+import { createServerClient } from "@/your-path/server";
+
+export const createFeature = async ({ payload }: { payload: YourSchemaType }) => {
+  const client = await createServerClient();
+  return generateFeatureService(client, updateTag).create({ payload });
+};
+```
+
+In `client.ts`, bind your browser factory directly:
+
+```ts
+import { createBrowserClient } from "@/your-path/client";
+
+const service = useMemo(() => generateFeatureService(createBrowserClient()), []);
+```
+
+**Cached reads** — pass your cookie-free public client inside `unstable_cache` (never the authenticated server client):
+
+```ts
+export const getFeaturesCached = unstable_cache(
+  async () => {
+    const client = createPublicServerClient(); // your public factory
+    return generateFeatureService(client).getAll<YourRecord>({});
+  },
+  ["your-feature-list"],
+  { tags: [featureServiceConfig.dbServiceConfig.cacheTag ?? ""] },
+);
+```
+
+
 
 ---
 
@@ -46,10 +151,15 @@ const path = `projects/${slug}/cover-${Date.now()}.${image.name.split(".").pop()
 
 const { error: upErr } = await supabase.storage.from("projects").upload(path, image);
 if (upErr) return { success: false, error: upErr.message };
-const { data: { publicUrl } } = supabase.storage.from("projects").getPublicUrl(path);
+const {
+  data: { publicUrl },
+} = supabase.storage.from("projects").getPublicUrl(path);
 
-const { data, error } = await supabase.from("projects")
-  .insert({ title, image: publicUrl }).select().single();
+const { data, error } = await supabase
+  .from("projects")
+  .insert({ title, image: publicUrl })
+  .select()
+  .single();
 if (error) return { success: false, error: error.message };
 
 updateTag("projects");
@@ -122,7 +232,7 @@ await service.update({ id, payload });
 // reads — pass your Record type; use object params
 await service.getById<Record>({ id });
 await service.get<Record>({ where: { slug }, shape: "single" }); // T | null
-await service.get<Record>({ where: { status: "approved" } });    // T[]
+await service.get<Record>({ where: { status: "approved" } }); // T[]
 await service.getAll<Record>({});
 await service.getAllSorted<Record>({ where: { status: "approved" } });
 ```
@@ -166,7 +276,7 @@ Keep the thin `"use server"` wrappers, sorting orchestration, cached reads, and 
 
 ---
 
-## Creating an Entity: Single Client vs Multi Clients
+## Creating an Entity: Single Client vs Multi Client
 
 Every entity is 2–3 files. The config object is identical; only the client binding differs.
 
@@ -177,14 +287,19 @@ Every entity is 2–3 files. The config object is identical; only the client bin
 | Multi-client  | `core.ts`, `server.ts`, `client.ts` | `generateFeatureService(client)` |
 
 
-Scaffold either pattern:
+Scaffold either pattern — the CLI asks single vs multi with a select menu (or pass the keyword to skip it):
 
 ```bash
-npx create-supabase-orchestrator entity blog          # single-client (default)
-npx create-supabase-orchestrator entity blog multi    # multi-client (adds client.ts)
+npx create-supabase-orchestrator blog                     # menu picks single/multi
+npx create-supabase-orchestrator blog multi               # skip the menu (adds client.ts)
+npx create-supabase-orchestrator services/features blog   # first arg is the target dir
 ```
 
-Live examples: `entities/articles/` (single), `entities/projects/` (multi).
+The first positional is the target dir (any path, resolved under `src/` when present) and defaults to the preferred `services/entities`. The `entity <name> [multi]` form still works as a backward-compatible alias.
+
+Live examples (via `npx create-supabase-orchestrator examples`): `entities/articles/` (single), `entities/projects/` (multi).
+
+> If you skipped `lib/supabase/` init, wire your clients via [Path A or Path B](#bring-your-own-supabase-clients) before using multi-client entities.
 
 ### Single-client (server-only)
 
@@ -195,7 +310,9 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createEntityService } from "@/services/core/entity";
 import { updateTag } from "next/cache";
 
-export const featureServiceConfig: EntityServiceConfig = { /* ... */ };
+export const featureServiceConfig: EntityServiceConfig = {
+  /* ... */
+};
 
 export const getFeatureService = async () => {
   const client = await createServerClient();
@@ -252,12 +369,11 @@ const { data: rows } = await getFeatures();
 import { createEntityService } from "@/services/core/entity";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const featureServiceConfig: EntityServiceConfig = { /* ... */ };
+export const featureServiceConfig: EntityServiceConfig = {
+  /* ... */
+};
 
-export const generateFeatureService = (
-  client: SupabaseClient,
-  updateTag?: (tag: string) => void,
-) =>
+export const generateFeatureService = (client: SupabaseClient, updateTag?: (tag: string) => void) =>
   createEntityService({
     supabaseClient: client,
     updateTag,
@@ -303,10 +419,7 @@ import { generateFeatureService } from "./core";
 
 export const useFeatureService = () => {
   const browserClient = useMemo(() => createBrowserClient(), []);
-  const service = useMemo(
-    () => generateFeatureService(browserClient),
-    [browserClient],
-  );
+  const service = useMemo(() => generateFeatureService(browserClient), [browserClient]);
   return { service };
 };
 ```
@@ -345,7 +458,8 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 
 ### Factory methods
 
-**`createDbService`** — raw table operations:
+`**createDbService`** — raw table operations:
+
 
 | Method    | Params                                 | Notes                       |
 | --------- | -------------------------------------- | --------------------------- |
@@ -356,7 +470,9 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `get`     | `{ where?, limit?, orderBy?, shape? }` | `shape: "single"` → one row |
 | `getAll`  | `{}`                                   | full table select           |
 
-**`createStorageService`** — file lifecycle:
+
+`**createStorageService**` — file lifecycle:
+
 
 | Method              | Params                                       | Notes                                    |
 | ------------------- | -------------------------------------------- | ---------------------------------------- |
@@ -367,9 +483,11 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `processUpdateTree` | `{ databaseSnapshot, payload, payloadKey? }` | upload new files, delete removed URLs    |
 | `hasBinaryAssets`   | `(payload)`                                  | boolean — any `File` in payload?         |
 
+
 `processUploadTree` / `processUpdateTree` return the mutated `PayloadRecord` directly (not `ApiResponse`).
 
-**`createSortingService`** — persisted manual order (requires a `dbService` on your `sort` table):
+`**createSortingService**` — persisted manual order (requires a `dbService` on your `sort` table):
+
 
 | Method                | Params             | Notes                            |
 | --------------------- | ------------------ | -------------------------------- |
@@ -378,6 +496,7 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `saveSort`            | `{ ids }`          | persist manual order array       |
 | `removeItemFromOrder` | `{ id }`           | drop one id from order on delete |
 | `sortByOrder`         | `{ items, order }` | in-memory sort by saved id list  |
+
 
 Need plain table access for a simple lookup table? Reach for the db factory directly:
 

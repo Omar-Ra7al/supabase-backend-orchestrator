@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import {
   pkgRoot,
@@ -7,7 +8,9 @@ import {
   nameForms,
   applyPlaceholders,
   copyDir,
-  prompt,
+  cleanDir,
+  selectMenu,
+  confirmMenu,
 } from "./utils.mjs";
 
 function fail(message) {
@@ -15,132 +18,273 @@ function fail(message) {
   process.exit(1);
 }
 
+function isForce(args) {
+  return args.some((a) => a === "--force" || a === "-y" || a === "--yes");
+}
+
 const argv = process.argv.slice(2);
 const command = argv[0];
 
-if (command === "entity" || command === "generate" || command === "add") {
+if (command === "examples") {
+  await runExamples(argv.slice(1));
+} else if (command === "entity" || command === "generate" || command === "add") {
   await runEntity(argv.slice(1));
 } else if (command === "--help" || command === "-h" || command === "help") {
   printHelp();
+} else if (command && !command.startsWith("-")) {
+  // positional: `<dir> <feature-name>` or `<feature-name>`
+  await runEntity(argv);
 } else {
   await runScaffold(argv);
 }
 
 /**
- * DEFAULT: scaffold services/core, services/entities, and lib/supabase into
- * the user's project. Creates what's missing; prompts overwrite-or-cancel
- * when any target already exists.
+ * Copy `from` -> `to`, prompting with an arrow-key menu before overwriting an
+ * existing target (unless `force`). Returns "created" | "overwrote" | "skipped".
  */
-async function runScaffold(args) {
-  const force = args.some((a) => a === "--force" || a === "-y" || a === "--yes");
-  const cwd = process.cwd();
-  const base = detectBase(cwd);
+async function copyJob({ from, to, force, cwd, filter, transform }) {
+  if (!existsSync(from)) fail(`Package payload missing: ${from}`);
 
-  // source -> target mappings (target is absolute, in the user's project)
-  const jobs = [
-    {
-      label: "services/core",
-      from: join(pkgRoot, "src/services/core"),
-      to: join(base, "services/core"),
-    },
-    {
-      label: "services/entities",
-      from: join(pkgRoot, "src/services/entities"),
-      to: join(base, "services/entities"),
-      // skip repo-specific demos; ship the reusable starting points only
-      skip: new Set(["projects", "articles"]),
-    },
-    {
-      label: "lib/supabase",
-      from: join(pkgRoot, "src/lib/supabase"),
-      to: join(base, "lib/supabase"),
-    },
-  ];
+  const exists = existsSync(to);
+  const rel = relative(cwd, to) || to;
 
-  for (const job of jobs) {
-    if (!existsSync(job.from)) {
-      fail(`Package payload missing: ${job.from}`);
+  if (exists && !force) {
+    const action = await selectMenu({
+      message: `${rel} already exists. Overwrite?`,
+      options: [
+        { value: "overwrite", label: "Overwrite", hint: "replace existing files" },
+        { value: "skip", label: "Skip", hint: "leave it untouched" },
+      ],
+    });
+    if (action === "skip") {
+      console.log(`  skipped ${rel}`);
+      return "skipped";
     }
   }
 
-  const existing = jobs.filter((job) => existsSync(job.to));
+  if (exists) await cleanDir(to);
+  await copyDir(from, to, { filter, transform });
+  const status = exists ? "overwrote" : "created";
+  console.log(`  ${status} ${rel}`);
+  return status;
+}
 
-  if (existing.length && !force) {
-    console.log("\n  These already exist in your project:");
-    for (const job of existing) {
-      console.log(`    - ${relative(cwd, job.to) || job.label}`);
-    }
-    const answer = (
-      await prompt("\n  Overwrite them? Type 'overwrite' to proceed, anything else cancels: ")
-    ).toLowerCase();
+const SHARED_TYPE_FROM_RESOLVER = `import type { ServerClientType } from "@/services/core/runtime/serverResolver";
 
-    if (answer !== "overwrite" && answer !== "o") {
+export type { ServerClientType };`;
+
+const SHARED_TYPE_INLINE = `export type ServerClientType = "server" | "public" | "admin";`;
+
+/**
+ * Inline ServerClientType in the copied types/shared.ts so core types work
+ * when services/core/runtime/ is omitted (direct client binding).
+ */
+async function patchSharedTypesForDirectMode(base) {
+  const sharedPath = join(base, "services/core/types/shared.ts");
+  if (!existsSync(sharedPath)) return;
+
+  const content = await readFile(sharedPath, "utf8");
+  if (!content.includes(SHARED_TYPE_FROM_RESOLVER)) return;
+
+  await writeFile(
+    sharedPath,
+    content.replace(SHARED_TYPE_FROM_RESOLVER, SHARED_TYPE_INLINE),
+    "utf8",
+  );
+}
+
+/**
+ * DEFAULT: scaffold services/core into the user's project, then offer to
+ * initialize the Supabase client factories (lib/supabase). Prompts use
+ * arrow-key menus; pass `--force` / `-y` to skip them in CI.
+ */
+async function runScaffold(args) {
+  const force = isForce(args);
+  const cwd = process.cwd();
+  const base = detectBase(cwd);
+
+  const initClients = force
+    ? true
+    : await confirmMenu({
+        message: "Init the Supabase clients for you (lib/supabase)?",
+        active: "Yes, create them",
+        inactive: "No, I have my own",
+        initialValue: true,
+      });
+
+  let clientMode = "bundled";
+  if (!initClients) {
+    clientMode = force
+      ? "wire-resolver"
+      : await selectMenu({
+          message: "How will you connect your Supabase clients?",
+          options: [
+            {
+              value: "wire-resolver",
+              label: "Wire them into serverResolver.ts",
+              hint: "recommended for multi-client + runWithService",
+            },
+            {
+              value: "direct",
+              label: "Pass clients directly in entity files",
+              hint: "skip runtime; bind clients in core.ts / server.ts / client.ts",
+            },
+          ],
+          initialValue: "wire-resolver",
+        });
+  }
+
+  await copyJob({
+    from: join(pkgRoot, "src/services/core"),
+    to: join(base, "services/core"),
+    force,
+    cwd,
+    filter: clientMode === "direct" ? new Set(["runtime"]) : undefined,
+  });
+
+  if (clientMode === "direct") {
+    await patchSharedTypesForDirectMode(base);
+  }
+
+  if (initClients) {
+    await copyJob({
+      from: join(pkgRoot, "src/lib/supabase"),
+      to: join(base, "lib/supabase"),
+      force,
+      cwd,
+    });
+  }
+
+  printScaffoldSummary(base, cwd, { initClients, clientMode });
+}
+
+/**
+ * `examples` — copy the runnable demos and starting points into
+ * services/entities: projects, articles, standalone-factories, templates.
+ */
+async function runExamples(args) {
+  const force = isForce(args);
+  const cwd = process.cwd();
+  const base = detectBase(cwd);
+
+  const names = ["projects", "articles", "standalone-factories", "templates"];
+
+  for (const name of names) {
+    await copyJob({
+      from: join(pkgRoot, "src/services/entities", name),
+      to: join(base, "services/entities", name),
+      force,
+      cwd,
+    });
+  }
+
+  console.log("\n  Examples copied into services/entities:");
+  console.log("   - projects/              live multi-client example");
+  console.log("   - articles/              live single-client example");
+  console.log("   - standalone-factories/  use one factory alone (db / storage / sorting)");
+  console.log("   - templates/             single-client/ and multi-client/ starters\n");
+}
+
+/**
+ * Generate a new feature from the bundled template. Accepts an optional target
+ * directory as the first positional (defaults to the preferred
+ * `services/entities`); single vs multi client is chosen via a select menu.
+ *
+ *   <dir> <feature-name>
+ *   <feature-name>
+ *   entity <feature-name> [multi]   (backward-compatible alias)
+ */
+async function runEntity(args) {
+  const force = isForce(args);
+  const isMulti = (a) => /^(--)?multi(-client)?$/.test(a);
+  const isSingle = (a) => /^(--)?single(-client)?$/.test(a);
+
+  const explicitMulti = args.some(isMulti);
+  const explicitSingle = args.some(isSingle);
+
+  const positionals = args.filter(
+    (a) => !a.startsWith("-") && !isMulti(a) && !isSingle(a),
+  );
+
+  let targetDir = "services/entities";
+  let rawName;
+
+  if (positionals.length >= 2) {
+    [targetDir, rawName] = positionals;
+  } else {
+    [rawName] = positionals;
+  }
+
+  if (!rawName) {
+    fail(
+      "Usage: npx create-supabase-orchestrator [<dir>] <feature-name>\n" +
+        "  e.g. npx create-supabase-orchestrator blog\n" +
+        "       npx create-supabase-orchestrator services/features blog\n" +
+        "  (target dir defaults to services/entities)",
+    );
+  }
+
+  if (!/^[a-zA-Z][a-zA-Z0-9-_ ]*$/.test(rawName)) {
+    fail(`Invalid feature name: "${rawName}". Use letters, numbers, "-" or "_".`);
+  }
+
+  const forms = nameForms(rawName);
+  const base = detectBase(process.cwd());
+  const targetPath = join(base, targetDir, forms.kebab);
+  const rel = relative(process.cwd(), targetPath);
+
+  const exists = existsSync(targetPath);
+  if (exists && !force) {
+    const action = await selectMenu({
+      message: `${rel} already exists. Overwrite?`,
+      options: [
+        { value: "overwrite", label: "Overwrite", hint: "replace existing files" },
+        { value: "cancel", label: "Cancel", hint: "keep it, no changes" },
+      ],
+      initialValue: "cancel",
+    });
+    if (action !== "overwrite") {
       console.log("\n  Cancelled. No changes made.\n");
       process.exit(0);
     }
   }
 
-  for (const job of jobs) {
-    await copyDir(job.from, job.to, {
-      filter: job.skip,
+  if (exists) await cleanDir(targetPath);
+
+  let multi = explicitMulti;
+  if (!explicitMulti && !explicitSingle) {
+    const pattern = await selectMenu({
+      message: "Which client pattern?",
+      options: [
+        {
+          value: "single",
+          label: "Single-client",
+          hint: "server-only, core.ts + server.ts",
+        },
+        {
+          value: "multi",
+          label: "Multi-client",
+          hint: "browser + admin + public, adds client.ts",
+        },
+      ],
+      initialValue: "single",
     });
-    const status = existing.includes(job) ? "overwrote" : "created";
-    console.log(`  ${status} ${relative(cwd, job.to) || job.label}`);
-  }
-
-  printScaffoldSummary(base, cwd);
-}
-
-/**
- * `entity <name> [multi]` — generate a new entity from the bundled template
- * into the user's project.
- */
-async function runEntity(args) {
-  const isMulti = (a) => /^(--)?multi(-client)?$/.test(a);
-  const isSingle = (a) => /^(--)?single(-client)?$/.test(a);
-  const multi = args.some(isMulti);
-  const rawName = args.find(
-    (a) => !a.startsWith("-") && !isMulti(a) && !isSingle(a),
-  );
-
-  if (!rawName) {
-    fail(
-      "Usage: npx create-supabase-orchestrator entity <name> [multi]\n" +
-        "  e.g. npx create-supabase-orchestrator entity blog\n" +
-        "       npx create-supabase-orchestrator entity blog multi",
-    );
-  }
-
-  if (!/^[a-zA-Z][a-zA-Z0-9-_ ]*$/.test(rawName)) {
-    fail(`Invalid entity name: "${rawName}". Use letters, numbers, "-" or "_".`);
+    multi = pattern === "multi";
   }
 
   const template = multi ? "multi-client" : "single-client";
-  const templatePath = join(
-    pkgRoot,
-    "src/services/entities/templates",
-    template,
-  );
+  const templatePath = join(pkgRoot, "src/services/entities/templates", template);
   if (!existsSync(templatePath)) {
     fail(`Template not found: ${templatePath}`);
-  }
-
-  const forms = nameForms(rawName);
-  const base = detectBase(process.cwd());
-  const targetPath = join(base, "services/entities", forms.kebab);
-
-  if (existsSync(targetPath)) {
-    fail(
-      `Entity already exists: ${relative(process.cwd(), targetPath)} (refusing to overwrite).`,
-    );
   }
 
   await copyDir(templatePath, targetPath, {
     transform: (raw) => applyPlaceholders(raw, forms),
   });
 
-  const rel = relative(process.cwd(), targetPath);
-  console.log(`\n  Created ${rel} from the ${template} template.`);
+  console.log(
+    `\n  ${exists ? "Overwrote" : "Created"} ${rel} from the ${template} template.`,
+  );
   console.log("\n  Next steps:");
   console.log(
     "   1. Replace domain placeholders (your_table, your-cache-tag, YourData, YourRecord, ...)",
@@ -151,8 +295,11 @@ async function runEntity(args) {
   );
 }
 
-function printScaffoldSummary(base, cwd) {
+function printScaffoldSummary(base, cwd, { initClients, clientMode }) {
   const baseRel = relative(cwd, base) || ".";
+  const corePrefix =
+    baseRel === "." ? "services/core" : `${baseRel}/services/core`;
+
   console.log("\n  Done. Make sure your project is ready:");
   console.log(
     `   - tsconfig.json paths: { "@/*": ["./${baseRel === "." ? "" : baseRel + "/"}*"] }`,
@@ -160,8 +307,34 @@ function printScaffoldSummary(base, cwd) {
   console.log(
     "   - install peer deps: npm i @supabase/supabase-js @supabase/ssr next",
   );
+
+  if (clientMode === "wire-resolver") {
+    console.log(
+      `   - update ${corePrefix}/runtime/serverResolver.ts: point @/lib/supabase/* imports at your client factories`,
+    );
+    console.log(
+      "   - when generating entities, update core.ts / client.ts imports to your client paths",
+    );
+    console.log(
+      "   - multi-client entities keep createServiceRunner + runWithService(clientType, action)",
+    );
+  } else if (clientMode === "direct") {
+    console.log(
+      "   - services/core/runtime/ was skipped — bind clients in each entity's core.ts / server.ts / client.ts",
+    );
+    console.log(
+      "   - do not use createServiceRunner; call generateFeatureService(yourClient(), updateTag) per action",
+    );
+    console.log(
+      "   - cached reads: pass your cookie-free public client directly inside unstable_cache",
+    );
+  }
+
   console.log(
-    "   - generate an entity: npx create-supabase-orchestrator entity <name> [multi]\n",
+    "   - grab the examples: npx create-supabase-orchestrator examples",
+  );
+  console.log(
+    "   - generate a feature: npx create-supabase-orchestrator [<dir>] <feature-name>\n",
   );
 }
 
@@ -171,15 +344,19 @@ function printHelp() {
 
   Usage:
     npx create-supabase-orchestrator [--force]
-        Scaffold services/core, services/entities, and lib/supabase into
-        the current project (src/ is used automatically when present).
-        Prompts before overwriting anything that already exists.
+        Scaffold services/core into the current project (src/ is used
+        automatically when present), then choose whether to init the
+        Supabase clients (lib/supabase) or bring your own.
 
-    npx create-supabase-orchestrator entity <name> [multi]
-        Generate a new entity from the single-client (default) or
-        multi-client template.
+    npx create-supabase-orchestrator examples
+        Copy the runnable demos and starters into services/entities:
+        projects, articles, standalone-factories, templates.
+
+    npx create-supabase-orchestrator [<dir>] <feature-name>
+        Generate a new feature. The target dir defaults to
+        services/entities; single vs multi client is chosen via a menu.
 
   Flags:
-    --force, -y   Skip the overwrite prompt and overwrite in place.
+    --force, -y   Skip interactive menus (overwrite in place, init clients).
 `);
 }

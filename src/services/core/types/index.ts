@@ -1,7 +1,6 @@
 export type {
   BaseId,
   BaseParams,
-  ServerClientType,
   OrderBy,
   PayloadRecord,
   SortIds,
