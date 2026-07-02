@@ -53,12 +53,18 @@ export function applyPlaceholders(content, { kebab, camel, pascal }) {
  * Recursively copy `from` -> `to`. Pass `transform` to rewrite text file
  * contents (used for placeholder swapping during entity generation).
  * Pass `filter` (a Set of names) to skip matching top-level entries only.
+ * Pass `prune: true` to remove top-level entries in `to` that were not copied
+ * from `from` (safe overwrite: files are written first, then stale leftovers
+ * removed — avoids the delete-then-recreate race that can drop fresh files on
+ * mounted volumes).
  */
-export async function copyDir(from, to, { transform, filter } = {}) {
+export async function copyDir(from, to, { transform, filter, prune } = {}) {
   await mkdir(to, { recursive: true });
   const entries = await readdir(from);
+  const copied = new Set();
   for (const entry of entries) {
     if (filter && filter.has(entry)) continue;
+    copied.add(entry);
     const src = join(from, entry);
     const dest = join(to, entry);
     const info = await stat(src);
@@ -68,6 +74,13 @@ export async function copyDir(from, to, { transform, filter } = {}) {
     } else {
       const raw = await readFile(src, "utf8");
       await writeFile(dest, transform ? transform(raw) : raw, "utf8");
+    }
+  }
+  if (prune) {
+    for (const existing of await readdir(to)) {
+      if (!copied.has(existing)) {
+        await rm(join(to, existing), { recursive: true, force: true });
+      }
     }
   }
 }

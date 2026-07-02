@@ -8,7 +8,6 @@ import {
   nameForms,
   applyPlaceholders,
   copyDir,
-  cleanDir,
   selectMenu,
   confirmMenu,
 } from "./utils.mjs";
@@ -39,14 +38,17 @@ if (command === "examples") {
 }
 
 /**
- * Copy `from` -> `to`, prompting with an arrow-key menu before overwriting an
- * existing target (unless `force`). Returns "created" | "overwrote" | "skipped".
+ * Decide what to do with a copy target WITHOUT touching the filesystem: verify
+ * the payload exists, check whether `to` already exists, and (unless `force`)
+ * prompt with an arrow-key menu to overwrite or skip. Returns a plan object to
+ * hand to `applyCopy`.
  */
-async function copyJob({ from, to, force, cwd, filter, transform }) {
+async function planCopy({ from, to, force, cwd, filter, transform }) {
   if (!existsSync(from)) fail(`Package payload missing: ${from}`);
 
   const exists = existsSync(to);
   const rel = relative(cwd, to) || to;
+  let skip = false;
 
   if (exists && !force) {
     const action = await selectMenu({
@@ -56,14 +58,26 @@ async function copyJob({ from, to, force, cwd, filter, transform }) {
         { value: "skip", label: "Skip", hint: "leave it untouched" },
       ],
     });
-    if (action === "skip") {
-      console.log(`  skipped ${rel}`);
-      return "skipped";
-    }
+    skip = action === "skip";
   }
 
-  if (exists) await cleanDir(to);
-  await copyDir(from, to, { filter, transform });
+  return { from, to, cwd, exists, skip, filter, transform, rel };
+}
+
+/**
+ * Execute a plan produced by `planCopy`. Copies with `prune` so template files
+ * are written first and stale leftovers removed after (no delete-then-recreate).
+ * Returns "created" | "overwrote" | "skipped".
+ */
+async function applyCopy(plan) {
+  const { from, to, exists, skip, filter, transform, rel } = plan;
+
+  if (skip) {
+    console.log(`  skipped ${rel}`);
+    return "skipped";
+  }
+
+  await copyDir(from, to, { filter, transform, prune: true });
   const status = exists ? "overwrote" : "created";
   console.log(`  ${status} ${rel}`);
   return status;
@@ -103,6 +117,14 @@ async function runScaffold(args) {
   const cwd = process.cwd();
   const base = detectBase(cwd);
 
+  // Existence check first: resolve the always-present target before any question.
+  const corePlan = await planCopy({
+    from: join(pkgRoot, "src/services/core"),
+    to: join(base, "services/core"),
+    force,
+    cwd,
+  });
+
   const initClients = force
     ? true
     : await confirmMenu({
@@ -111,6 +133,18 @@ async function runScaffold(args) {
         inactive: "No, I have my own",
         initialValue: true,
       });
+
+  // lib/supabase is only a target when initClients — resolve its existence
+  // prompt right after that question, still before the remaining config question.
+  let libPlan = null;
+  if (initClients) {
+    libPlan = await planCopy({
+      from: join(pkgRoot, "src/lib/supabase"),
+      to: join(base, "lib/supabase"),
+      force,
+      cwd,
+    });
+  }
 
   let clientMode = "bundled";
   if (!initClients) {
@@ -134,25 +168,15 @@ async function runScaffold(args) {
         });
   }
 
-  await copyJob({
-    from: join(pkgRoot, "src/services/core"),
-    to: join(base, "services/core"),
-    force,
-    cwd,
-    filter: clientMode === "direct" ? new Set(["runtime"]) : undefined,
-  });
+  corePlan.filter = clientMode === "direct" ? new Set(["runtime"]) : undefined;
+  await applyCopy(corePlan);
 
   if (clientMode === "direct") {
     await patchSharedTypesForDirectMode(base);
   }
 
-  if (initClients) {
-    await copyJob({
-      from: join(pkgRoot, "src/lib/supabase"),
-      to: join(base, "lib/supabase"),
-      force,
-      cwd,
-    });
+  if (libPlan) {
+    await applyCopy(libPlan);
   }
 
   printScaffoldSummary(base, cwd, { initClients, clientMode });
@@ -169,13 +193,21 @@ async function runExamples(args) {
 
   const names = ["projects", "articles", "standalone-factories", "templates"];
 
+  // Resolve every overwrite prompt up front, then copy — no prompts mid-copy.
+  const plans = [];
   for (const name of names) {
-    await copyJob({
-      from: join(pkgRoot, "src/services/entities", name),
-      to: join(base, "services/entities", name),
-      force,
-      cwd,
-    });
+    plans.push(
+      await planCopy({
+        from: join(pkgRoot, "src/services/entities", name),
+        to: join(base, "services/entities", name),
+        force,
+        cwd,
+      }),
+    );
+  }
+
+  for (const plan of plans) {
+    await applyCopy(plan);
   }
 
   console.log("\n  Examples copied into services/entities:");
@@ -249,8 +281,6 @@ async function runEntity(args) {
     }
   }
 
-  if (exists) await cleanDir(targetPath);
-
   let multi = explicitMulti;
   if (!explicitMulti && !explicitSingle) {
     const pattern = await selectMenu({
@@ -280,6 +310,7 @@ async function runEntity(args) {
 
   await copyDir(templatePath, targetPath, {
     transform: (raw) => applyPlaceholders(raw, forms),
+    prune: true,
   });
 
   console.log(
