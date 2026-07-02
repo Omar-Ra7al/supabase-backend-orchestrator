@@ -45,7 +45,8 @@ Then make sure your project has:
 
 ---
 
-## Bring your own Supabase clients
+<details>
+<summary><h2>Bring your own Supabase clients</h2></summary>
 
 Skipped `lib/supabase/` init? The CLI asks how you'll connect clients — pick one:
 
@@ -134,7 +135,7 @@ export const getFeaturesCached = unstable_cache(
 );
 ```
 
-
+</details>
 
 ---
 
