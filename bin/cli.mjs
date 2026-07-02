@@ -8,6 +8,7 @@ import {
   nameForms,
   applyPlaceholders,
   copyDir,
+  cleanDir,
   selectMenu,
   confirmMenu,
 } from "./utils.mjs";
@@ -117,7 +118,6 @@ async function runScaffold(args) {
   const cwd = process.cwd();
   const base = detectBase(cwd);
 
-  // Existence check first: resolve the always-present target before any question.
   const corePlan = await planCopy({
     from: join(pkgRoot, "src/services/core"),
     to: join(base, "services/core"),
@@ -125,29 +125,55 @@ async function runScaffold(args) {
     cwd,
   });
 
-  const initClients = force
-    ? true
-    : await confirmMenu({
-        message: "Init the Supabase clients for you (lib/supabase)?",
-        active: "Yes, create them",
-        inactive: "No, I have my own",
-        initialValue: true,
-      });
+  const libTarget = join(base, "lib/supabase");
+  const libExists = existsSync(libTarget);
+  let initClients = false;
 
-  // lib/supabase is only a target when initClients — resolve its existence
-  // prompt right after that question, still before the remaining config question.
+  if (libExists) {
+    if (force) {
+      initClients = true;
+    } else {
+      const action = await selectMenu({
+        message: "lib/supabase already exists. Overwrite your existing Supabase clients?",
+        options: [
+          {
+            value: "overwrite",
+            label: "Yes, overwrite them",
+            hint: "replace with default client factories",
+          },
+          {
+            value: "skip",
+            label: "No, keep my own",
+            hint: "leave your existing files untouched",
+          },
+        ],
+        initialValue: "skip",
+      });
+      initClients = action === "overwrite";
+    }
+  } else {
+    initClients = force
+      ? true
+      : await confirmMenu({
+          message: "Init the Supabase clients for you (lib/supabase)?",
+          active: "Yes, create them",
+          inactive: "No, I have my own",
+          initialValue: true,
+        });
+  }
+
   let libPlan = null;
   if (initClients) {
     libPlan = await planCopy({
       from: join(pkgRoot, "src/lib/supabase"),
-      to: join(base, "lib/supabase"),
-      force,
+      to: libTarget,
+      force: true,
       cwd,
     });
   }
 
   let clientMode = "bundled";
-  if (!initClients) {
+  if (!initClients && !libExists) {
     clientMode = force
       ? "wire-resolver"
       : await selectMenu({
@@ -179,7 +205,7 @@ async function runScaffold(args) {
     await applyCopy(libPlan);
   }
 
-  printScaffoldSummary(base, cwd, { initClients, clientMode });
+  printScaffoldSummary(base, cwd, { clientMode });
 }
 
 /**
@@ -281,6 +307,8 @@ async function runEntity(args) {
     }
   }
 
+  if (exists) await cleanDir(targetPath);
+
   let multi = explicitMulti;
   if (!explicitMulti && !explicitSingle) {
     const pattern = await selectMenu({
@@ -326,7 +354,7 @@ async function runEntity(args) {
   );
 }
 
-function printScaffoldSummary(base, cwd, { initClients, clientMode }) {
+function printScaffoldSummary(base, cwd, { clientMode }) {
   const baseRel = relative(cwd, base) || ".";
   const corePrefix =
     baseRel === "." ? "services/core" : `${baseRel}/services/core`;
