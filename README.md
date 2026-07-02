@@ -20,11 +20,14 @@ npx create-supabase-orchestrator blog                     # asks single vs multi
 npx create-supabase-orchestrator services/features blog   # any dir you want
 ```
 
+<details>
+<summary><h3>What gets copied &amp; how to finish setup (read this before you run it)</h3></summary>
+
 `npx create-supabase-orchestrator` copies the engine only (writes under `src/` when it exists, else project root; arrow-key menus, or pass `--force` / `-y` in CI):
 
 - `services/core/` — the engine (orchestrator + db/storage/sorting factories). Always copied.
 - `lib/supabase/` — Standard client factories. The CLI **asks** whether to init these for you or bring your own.
-  > *While you can initialize clients manually elsewhere, we **strongly recommend** this pattern as it aligns with official Supabase/Next.js best practices for SSR and RLS.*
+  > _While you can initialize clients manually elsewhere, we **strongly recommend** this pattern as it aligns with official Supabase/Next.js best practices for SSR and RLS._
   > If you skip client init, the CLI asks how you'll connect clients — see [Bring your own Supabase clients](#bring-your-own-supabase-clients).
 
 Prompts are interactive **select menus** (arrow keys), not free text: on overwrite you pick `Overwrite` / `Skip`; client init is `Yes / No`; if you bring your own clients, you pick **wire `serverResolver.ts`** or **pass clients directly**. Pass `--force` / `-y` to skip every menu (overwrite in place, init clients) for CI.
@@ -43,6 +46,8 @@ Then make sure your project has:
 
 > In-repo equivalent of the feature generator: `npm run entity:generate blog [multi]`.
 
+</details>
+
 ---
 
 <details>
@@ -57,12 +62,10 @@ Skipped `lib/supabase/` init? The CLI asks how you'll connect clients — pick o
 
 If you answer **"No, I have my own"** when the CLI asks to init `lib/supabase/`, bundled client factories are not copied — but `services/core/runtime/serverResolver.ts` and entity templates still expect Supabase clients somewhere.
 
-
 | Path                             | CLI choice                            | Best for                                              |
 | -------------------------------- | ------------------------------------- | ----------------------------------------------------- |
 | **A — Wire `serverResolver.ts`** | Wire them into `serverResolver.ts`    | Multi-client entities using `runWithService`          |
 | **B — Pass clients directly**    | Pass clients directly in entity files | Single-client or when you already have client helpers |
-
 
 ### Path A — Wire `serverResolver.ts` (multi-client helper)
 
@@ -192,8 +195,6 @@ flowchart TD
   Sort --> Supa
 ```
 
-
-
 - **Factories (`services/core/factories/`)** — three stateless, pure builders. Each takes a Supabase client + its config slice and returns one capability, nothing more:
   - `db.ts` — table operations: insert/update/delete + filtered select.
   - `storage.ts` — file lifecycle: collect `File`s, upload to predictable paths, diff/replace on update, clean up on delete.
@@ -211,7 +212,6 @@ Every service exposes the same methods. All take object params and return `ApiRe
 const { data, success, error, message } = await service.create({ payload });
 ```
 
-
 | Method         | Params                                 | Returns     | Notes                                          |
 | -------------- | -------------------------------------- | ----------- | ---------------------------------------------- |
 | `create`       | `{ payload }`                          | `T`         | uploads files, revalidates cache               |
@@ -223,7 +223,6 @@ const { data, success, error, message } = await service.create({ payload });
 | `getAllSorted` | `{ where? }`                           | `T[]`       | respects saved order                           |
 | `saveSort`     | `{ ids }`                              | order row   | needs `sortingServiceConfig`                   |
 | `getSort`      | `{}`                                   | order row   | needs `sortingServiceConfig`                   |
-
 
 ```ts
 // writes — T inferred from payload
@@ -281,12 +280,10 @@ Keep the thin `"use server"` wrappers, sorting orchestration, cached reads, and 
 
 Every entity is 2–3 files. The config object is identical; only the client binding differs.
 
-
 | Pattern       | Files                               | `core.ts` exports                |
 | ------------- | ----------------------------------- | -------------------------------- |
 | Single-client | `core.ts`, `server.ts`              | `getFeatureService()`            |
 | Multi-client  | `core.ts`, `server.ts`, `client.ts` | `generateFeatureService(client)` |
-
 
 Scaffold either pattern — the CLI asks single vs multi with a select menu (or pass the keyword to skip it):
 
@@ -436,14 +433,12 @@ const { data, success } = await service.create({ payload });
 
 **Client types at a glance** — pick per action with `runWithService(clientType, action)`:
 
-
 | Client  | Factory                      | Use case                                                    |
 | ------- | ---------------------------- | ----------------------------------------------------------- |
 | Server  | `createServerClient()`       | Cookie-aware, authenticated server actions (default writes) |
 | Public  | `createPublicServerClient()` | Cache-safe reads inside `unstable_cache` (no cookies)       |
 | Admin   | `createAdminClient()`        | Bypass RLS for admin operations                             |
 | Browser | `createBrowserClient()`      | Client components via `client.ts` hook                      |
-
 
 > **Import rule:** components call actions from `server.ts` or the hook from `client.ts` — never import from `core.ts`.
 
@@ -459,8 +454,7 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 
 ### Factory methods
 
-`**createDbService`** — raw table operations:
-
+`**createDbService`\*\* — raw table operations:
 
 | Method    | Params                                 | Notes                       |
 | --------- | -------------------------------------- | --------------------------- |
@@ -471,9 +465,7 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `get`     | `{ where?, limit?, orderBy?, shape? }` | `shape: "single"` → one row |
 | `getAll`  | `{}`                                   | full table select           |
 
-
 `**createStorageService**` — file lifecycle:
-
 
 | Method              | Params                                       | Notes                                    |
 | ------------------- | -------------------------------------------- | ---------------------------------------- |
@@ -484,11 +476,9 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `processUpdateTree` | `{ databaseSnapshot, payload, payloadKey? }` | upload new files, delete removed URLs    |
 | `hasBinaryAssets`   | `(payload)`                                  | boolean — any `File` in payload?         |
 
-
 `processUploadTree` / `processUpdateTree` return the mutated `PayloadRecord` directly (not `ApiResponse`).
 
 `**createSortingService**` — persisted manual order (requires a `dbService` on your `sort` table):
-
 
 | Method                | Params             | Notes                            |
 | --------------------- | ------------------ | -------------------------------- |
@@ -497,7 +487,6 @@ All factory methods return `ApiResponse<T>` = `{ data, success, error, message }
 | `saveSort`            | `{ ids }`          | persist manual order array       |
 | `removeItemFromOrder` | `{ id }`           | drop one id from order on delete |
 | `sortByOrder`         | `{ items, order }` | in-memory sort by saved id list  |
-
 
 Need plain table access for a simple lookup table? Reach for the db factory directly:
 
@@ -537,4 +526,3 @@ services/
 2. Don't force complex logic into the factory — keep it in `server.ts`.
 3. Components call `server.ts` actions (or the `client.ts` hook), never entity services from `core.ts`.
 4. Keep param shapes consistent — object params (`{ payload }`, `{ id, payload }`) for all methods.
-
