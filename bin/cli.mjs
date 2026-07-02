@@ -22,20 +22,22 @@ function isForce(args) {
   return args.some((a) => a === "--force" || a === "-y" || a === "--yes");
 }
 
-const argv = process.argv.slice(2);
-const command = argv[0];
+async function main() {
+  const argv = process.argv.slice(2);
+  const command = argv[0];
 
-if (command === "examples") {
-  await runExamples(argv.slice(1));
-} else if (command === "entity" || command === "generate" || command === "add") {
-  await runEntity(argv.slice(1));
-} else if (command === "--help" || command === "-h" || command === "help") {
-  printHelp();
-} else if (command && !command.startsWith("-")) {
-  // positional: `<dir> <feature-name>` or `<feature-name>`
-  await runEntity(argv);
-} else {
-  await runScaffold(argv);
+  if (command === "examples") {
+    await runExamples(argv.slice(1));
+  } else if (command === "entity" || command === "generate" || command === "add") {
+    await runEntity(argv.slice(1));
+  } else if (command === "--help" || command === "-h" || command === "help") {
+    printHelp();
+  } else if (command && !command.startsWith("-")) {
+    // positional: `<dir> <feature-name>` or `<feature-name>`
+    await runEntity(argv);
+  } else {
+    await runScaffold(argv);
+  }
 }
 
 /**
@@ -419,3 +421,5 @@ function printHelp() {
     --force, -y   Skip interactive menus (overwrite in place, init clients).
 `);
 }
+
+await main();
