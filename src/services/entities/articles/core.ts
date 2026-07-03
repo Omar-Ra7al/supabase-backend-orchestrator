@@ -16,6 +16,7 @@ export const articleServiceConfig: EntityServiceConfig = {
   storageServiceConfig: {
     bucketName: "test",
     groupFolder: "articles",
+    payloadKey: "title",
   },
 };
 

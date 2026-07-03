@@ -12,6 +12,7 @@ export const projectServiceConfig: EntityServiceConfig = {
   storageServiceConfig: {
     bucketName: "test",
     groupFolder: "projects",
+    payloadKey: "title",
   },
   sortingServiceConfig: {
     tableName: "sort",
