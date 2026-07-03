@@ -1,8 +1,5 @@
 import { response } from "@/services/core/response";
-import type {
-  BaseSortingInstance,
-  SortingServiceConfig,
-} from "@/services/core/types";
+import type { BaseSortingInstance, SortingServiceConfig } from "@/services/core/types";
 
 export function createSortingService({
   dbService,
@@ -61,50 +58,38 @@ export function createSortingService({
   /**
    * REMOVE SORT
    */
-  const removeItemFromOrder: BaseSortingInstance["removeItemFromOrder"] =
-    async ({ id }) => {
-      const sortResponse = await dbService.get({
-        where: { column_id: sortRowId },
-        shape: "single",
-      });
-      if (!sortResponse.success) {
-        return response(
-          null,
-          false,
-          sortResponse.error,
-          "Failed to fetch sorting",
-        );
-      }
+  const removeItemFromOrder: BaseSortingInstance["removeItemFromOrder"] = async ({ id }) => {
+    const sortResponse = await dbService.get({
+      where: { column_id: sortRowId },
+      shape: "single",
+    });
+    if (!sortResponse.success) {
+      return response(null, false, sortResponse.error, "Failed to fetch sorting");
+    }
 
-      const sortRow = sortResponse.data as { ids?: unknown[] } | null;
-      const updatedOrder = sortRow?.ids?.filter((item) => item !== id);
+    const sortRow = sortResponse.data as { ids?: unknown[] } | null;
+    const updatedOrder = sortRow?.ids?.filter((item) => item !== id);
 
-      const result = await dbService.update({
-        id: sortRowId,
-        payload: { ids: updatedOrder },
-      });
+    const result = await dbService.update({
+      id: sortRowId,
+      payload: { ids: updatedOrder },
+    });
 
-      return response(
-        result.data,
-        result.success,
-        result.error,
-        result.success
-          ? "Item removed from order successfully"
-          : "Failed to remove item from order",
-      );
-    };
+    return response(
+      result.data,
+      result.success,
+      result.error,
+      result.success ? "Item removed from order successfully" : "Failed to remove item from order",
+    );
+  };
 
   /**
    * SORT BY ORDER
    */
-  const sortByOrder: BaseSortingInstance["sortByOrder"] = async ({
-    items,
-    order,
-  }) => {
+  const sortByOrder: BaseSortingInstance["sortByOrder"] = async ({ items, order }) => {
     const sortOrder = order ?? [];
     const sorted = [...(items ?? [])].sort(
-      (itemA, itemB) =>
-        sortOrder.indexOf(itemA.id) - sortOrder.indexOf(itemB.id),
+      (itemA, itemB) => sortOrder.indexOf(itemA.id) - sortOrder.indexOf(itemB.id),
     );
 
     return response(sorted, true, null, "Items sorted successfully");

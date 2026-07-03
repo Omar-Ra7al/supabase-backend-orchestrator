@@ -38,10 +38,7 @@ export function createDbService({
   /**
    * UPDATE
    */
-  const update = async <T extends object>({
-    id,
-    payload,
-  }: DbUpdateParams<T>) => {
+  const update = async <T extends object>({ id, payload }: DbUpdateParams<T>) => {
     const targetPayload = { ...payload } as PayloadRecord;
 
     const { data, error } = await supabaseClient
@@ -62,9 +59,7 @@ export function createDbService({
   /**
    * REMOVE
    */
-  const remove = async <T extends object = PayloadRecord>({
-    id,
-  }: DbRemoveParams) => {
+  const remove = async <T extends object = PayloadRecord>({ id }: DbRemoveParams) => {
     const { data, error } = await supabaseClient
       .from(tableName)
       .delete()
@@ -105,12 +100,7 @@ export function createDbService({
       .eq(primaryKey, id)
       .single();
 
-    return response(
-      data as T,
-      !error,
-      error?.message ?? null,
-      "Fetched successfully",
-    );
+    return response(data as T, !error, error?.message ?? null, "Fetched successfully");
   };
 
   /**
@@ -121,8 +111,7 @@ export function createDbService({
 
     let query = supabaseClient.from(tableName).select("*");
     if (where) {
-      for (const [key, value] of Object.entries(where))
-        query = query.eq(key, value);
+      for (const [key, value] of Object.entries(where)) query = query.eq(key, value);
     }
     if (orderBy)
       query = query.order(orderBy.column, {
@@ -132,21 +121,11 @@ export function createDbService({
 
     if (shape === "single") {
       const { data, error } = await query.maybeSingle();
-      return response(
-        data,
-        !error,
-        error?.message ?? null,
-        "Fetched successfully",
-      );
+      return response(data, !error, error?.message ?? null, "Fetched successfully");
     }
 
     const { data, error } = await query;
-    return response(
-      data ?? [],
-      !error,
-      error?.message ?? null,
-      "Fetched successfully",
-    );
+    return response(data ?? [], !error, error?.message ?? null, "Fetched successfully");
   };
 
   return {

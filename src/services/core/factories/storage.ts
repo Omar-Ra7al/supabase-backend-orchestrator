@@ -18,20 +18,17 @@ export function createStorageService({
   // Extracts relative path from absolute Supabase URL
   const extractPathFromUrl = (url: string): string => {
     const bucketIdentifier = `/${bucketName}/`;
-    return url.includes(bucketIdentifier)
-      ? url.split(bucketIdentifier)[1]
-      : url;
+    return url.includes(bucketIdentifier) ? url.split(bucketIdentifier)[1] : url;
   };
 
-  const getFolderSlug = (
-    data: PayloadRecord,
-    payloadKey?: WithPayloadKey,
-  ): string => {
-    const value = payloadKey
-      ? data[payloadKey]
-      : (data.title ?? data.slug ?? data.name ?? data.id);
+  const getFolderSlug = (data: PayloadRecord, payloadKey?: WithPayloadKey): string => {
+    const value = payloadKey ? data[payloadKey] : (data.title ?? data.slug ?? data.name ?? data.id);
 
     return value ? String(value) : "unorganized";
+  };
+
+  const hasBinaryAssets = (payload: PayloadRecord): boolean => {
+    return collectFiles(payload, []).length > 0;
   };
 
   /**
@@ -40,26 +37,17 @@ export function createStorageService({
   const upload: BaseStorageInstance["upload"] = async ({ file, path }) => {
     const finalPath = getFinalPath(file, path ?? "", groupFolder);
 
-    const { data, error } = await supabaseClient.storage
-      .from(bucketName)
-      .upload(finalPath, file, {
-        contentType: (file as File).type || undefined,
-      });
+    const { data, error } = await supabaseClient.storage.from(bucketName).upload(finalPath, file, {
+      contentType: (file as File).type || undefined,
+    });
 
     if (error) {
       return response("", false, error.message, "File upload failed");
     }
 
-    const { data: publicUrlData } = supabaseClient.storage
-      .from(bucketName)
-      .getPublicUrl(data.path);
+    const { data: publicUrlData } = supabaseClient.storage.from(bucketName).getPublicUrl(data.path);
 
-    return response(
-      publicUrlData.publicUrl,
-      true,
-      null,
-      "File uploaded successfully",
-    );
+    return response(publicUrlData.publicUrl, true, null, "File uploaded successfully");
   };
 
   /**
@@ -68,9 +56,7 @@ export function createStorageService({
   const remove: BaseStorageInstance["remove"] = async ({ fileUrl }) => {
     const filePath = extractPathFromUrl(fileUrl);
 
-    const { data, error } = await supabaseClient.storage
-      .from(bucketName)
-      .remove([filePath]);
+    const { data, error } = await supabaseClient.storage.from(bucketName).remove([filePath]);
 
     if (error) {
       return response(null, false, error.message, "File deletion failed");
@@ -160,9 +146,7 @@ export function createStorageService({
       fileMatch.parent[fileMatch.key] = uploaded.data;
     }
 
-    const remainingUrls = new Set(
-      collectUrls(result, [], bucketName, groupFolder),
-    );
+    const remainingUrls = new Set(collectUrls(result, [], bucketName, groupFolder));
 
     for (const oldUrl of oldUrls) {
       if (!remainingUrls.has(oldUrl)) {
@@ -185,18 +169,11 @@ export function createStorageService({
   };
 }
 
-export function hasBinaryAssets(payload: PayloadRecord): boolean {
-  return collectFiles(payload, []).length > 0;
-}
-
 /**
  * RECURSIVE HELPER: Deeply scans the incoming payload cargo object
  * to extract raw binary File attachments for processing.
  */
-function collectFiles(
-  obj: PayloadRecord,
-  discoveredFiles: DiscoveredFile[],
-): DiscoveredFile[] {
+function collectFiles(obj: PayloadRecord, discoveredFiles: DiscoveredFile[]): DiscoveredFile[] {
   for (const key of Object.keys(obj)) {
     const value = obj[key];
 
@@ -228,12 +205,10 @@ function collectUrls(
     const value = obj[key];
 
     if (typeof value === "string") {
-      const isHttp =
-        value.startsWith("http://") || value.startsWith("https://");
+      const isHttp = value.startsWith("http://") || value.startsWith("https://");
 
       const isOurAsset =
-        value.includes("supabase.co") &&
-        value.includes(`/${bucket}/${groupFolder}`);
+        value.includes("supabase.co") && value.includes(`/${bucket}/${groupFolder}`);
 
       if (isHttp && isOurAsset) {
         urls.push(value);
@@ -259,19 +234,13 @@ function cleanString(str: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function getFinalPath(
-  file: File | Blob | Buffer,
-  path?: string,
-  groupFolder?: string,
-) {
+function getFinalPath(file: File | Blob | Buffer, path?: string, groupFolder?: string) {
   const rawFileName = cleanString((file as File).name);
   const cleanPath = cleanString(path ?? "");
   const uniqueId = Date.now();
   const lastDotIndex = rawFileName.lastIndexOf(".");
-  const namePart =
-    lastDotIndex !== -1 ? rawFileName.substring(0, lastDotIndex) : rawFileName;
-  const extPart =
-    lastDotIndex !== -1 ? rawFileName.substring(lastDotIndex) : "";
+  const namePart = lastDotIndex !== -1 ? rawFileName.substring(0, lastDotIndex) : rawFileName;
+  const extPart = lastDotIndex !== -1 ? rawFileName.substring(lastDotIndex) : "";
   const finalPath = `${groupFolder}/${cleanPath}/${namePart}-id-${uniqueId}${extPart}`;
 
   return finalPath;
