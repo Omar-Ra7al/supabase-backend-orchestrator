@@ -27,10 +27,6 @@ export function createStorageService({
     return value ? String(value) : "unorganized";
   };
 
-  const hasBinaryAssets = (payload: PayloadRecord): boolean => {
-    return collectFiles(payload, []).length > 0;
-  };
-
   /**
    * UPLOAD FILE
    */
@@ -167,6 +163,10 @@ export function createStorageService({
     processUpdateTree,
     hasBinaryAssets,
   };
+}
+
+export function hasBinaryAssets(payload: PayloadRecord): boolean {
+  return collectFiles(payload, []).length > 0;
 }
 
 /**
