@@ -1,7 +1,7 @@
 "use client";
 
-// import ProjectForm from "@/components/forms/ProjectForm";
-import ArticleForm from "@/components/forms/ArticleForm";
+import ProjectForm from "@/components/forms/ProjectForm";
+// import ArticleForm from "@/components/forms/ArticleForm";
 
 /**
  * Demo screen wiring the two example forms together:
@@ -11,8 +11,8 @@ import ArticleForm from "@/components/forms/ArticleForm";
 const Form = () => {
   return (
     <div className="w-full flex flex-wrap items-start justify-center gap-6 p-6">
-      {/* <ProjectForm /> */}
-      <ArticleForm />
+      <ProjectForm />
+      {/* <ArticleForm /> */}
     </div>
   );
 };

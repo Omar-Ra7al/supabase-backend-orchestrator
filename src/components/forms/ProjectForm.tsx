@@ -11,20 +11,15 @@ import {
 import { useProjectService } from "@/services/entities/projects/client";
 
 const ProjectForm = () => {
-  // const projectService = useProjectService();
+  const projectService = useProjectService();
 
   const handleSubmit = async (data: ProjectSchemaTypes) => {
-    const res = await createProjectWithServerClient({ payload: data });
-    // const res = await createProjectWithAdminClient({ payload: data });
+    // const res = await createProjectWithServerClient({ payload: data });
+    const res = await createProjectWithAdminClient({ payload: data });
     // const res = await createProjectWithPublicClient({ payload: data });
     // const res = await projectService.createProject({ ...data });
 
-    if (!res.success) {
-      console.error(res.message, res.error);
-      return;
-    }
-
-    console.log("Project created:", res.data);
+    console.log(res);
   };
 
   return (

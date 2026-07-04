@@ -7,7 +7,9 @@ import { createArticle } from "@/services/entities/articles/server";
 
 const ArticleForm = () => {
   const handleSubmit = async (data: ArticleSchemaTypes) => {
-    createArticle({ payload: data });
+    const res = await createArticle({ payload: data });
+
+    console.log(res);
   };
 
   return (

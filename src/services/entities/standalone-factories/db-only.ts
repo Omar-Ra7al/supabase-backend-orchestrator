@@ -13,7 +13,7 @@ import { createDbService } from "@/services/core/factories/db";
  */
 export const getTagsDb = async () => {
   const supabaseClient = await createServerClient();
-  return createDbService({ tableName: "tags", supabaseClient });
+  return createDbService({ tableName: "tags", supabaseClient, primaryKey: "slug" });
 };
 
 // Usage:
