@@ -12,7 +12,7 @@ import { DiscoveredFile } from "../types/storage";
  */
 export function createStorageService({
   bucketName,
-  groupFolder = "uploads",
+  groupFolder,
   supabaseClient,
 }: StorageServiceConfig): BaseStorageInstance {
   // Extracts relative path from absolute Supabase URL
@@ -193,22 +193,23 @@ function collectFiles(obj: PayloadRecord, discoveredFiles: DiscoveredFile[]): Di
 
 /**
  * RECURSIVE HELPER: Scans data structures to gather infrastructure URLs
- * that explicitly match your bucket and structural group layout.
+ * that explicitly match your bucket and optional structural group layout.
  */
 function collectUrls(
   obj: PayloadRecord,
   urls: string[] = [],
   bucket: string,
-  groupFolder: string,
+  groupFolder?: string,
 ): string[] {
+  const assetPrefix = groupFolder ? `/${bucket}/${groupFolder}` : `/${bucket}/`;
+
   for (const key of Object.keys(obj)) {
     const value = obj[key];
 
     if (typeof value === "string") {
       const isHttp = value.startsWith("http://") || value.startsWith("https://");
 
-      const isOurAsset =
-        value.includes("supabase.co") && value.includes(`/${bucket}/${groupFolder}`);
+      const isOurAsset = value.includes("supabase.co") && value.includes(assetPrefix);
 
       if (isHttp && isOurAsset) {
         urls.push(value);
@@ -241,7 +242,8 @@ function getFinalPath(file: File | Blob | Buffer, path?: string, groupFolder?: s
   const lastDotIndex = rawFileName.lastIndexOf(".");
   const namePart = lastDotIndex !== -1 ? rawFileName.substring(0, lastDotIndex) : rawFileName;
   const extPart = lastDotIndex !== -1 ? rawFileName.substring(lastDotIndex) : "";
-  const finalPath = `${groupFolder}/${cleanPath}/${namePart}-id-${uniqueId}${extPart}`;
+  const fileName = `${namePart}-id-${uniqueId}${extPart}`;
+  const entityPath = cleanPath ? `${cleanPath}/${fileName}` : fileName;
 
-  return finalPath;
+  return groupFolder ? `${groupFolder}/${entityPath}` : entityPath;
 }
